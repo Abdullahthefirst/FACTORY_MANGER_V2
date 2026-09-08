@@ -256,6 +256,23 @@ try:
                 chart_data["production_date"]
             )
 
+            origin_date = (
+                chart_data["production_date"].min()
+                - pd.Timedelta(days=1)
+            )
+            origin_row = pd.DataFrame(
+                {
+                    "production_date": [origin_date],
+                    "planned_quantity": [0],
+                    "actual_quantity": [0],
+                }
+            )
+
+            chart_data = pd.concat(
+                [origin_row, chart_data],
+                ignore_index=True,
+            ).sort_values("production_date")
+
             chart_data = chart_data.melt(
                 id_vars=["production_date"],
                 value_vars=["planned_quantity", "actual_quantity"],
@@ -272,10 +289,7 @@ try:
 
             production_chart = (
                 alt.Chart(chart_data)
-                .mark_line(
-                    point=alt.OverlayMarkDef(size=80),
-                    strokeWidth=3,
-                )
+                .mark_line(point=True, strokeWidth=3)
                 .encode(
                     x=alt.X(
                         "production_date:T",
@@ -289,7 +303,7 @@ try:
                     ),
                     color=alt.Color(
                         "Metric:N",
-                        title="Metric",
+                        title=None,
                         scale=alt.Scale(
                             domain=["Actual Production", "Planned Production"],
                             range=["#1769aa", "#8ecae6"],
