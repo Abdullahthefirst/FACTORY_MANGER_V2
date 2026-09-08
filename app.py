@@ -788,21 +788,130 @@ try:
             )
 
     elif page == "⚙️ Machines & Maintenance":
-        st.title("Machines and Maintenance")
-        st.subheader("Machines")
-        machines_df = load_table("machines")
-        render_manager_table(
-            machines_df,
-            [
-                "status",
-                "machine_code",
-                "name",
-                "last_maintenance_date",
-            ],
-        )
+        st.title("Machines & Maintenance")
+        st.caption("Monitor machine condition, downtime, and open maintenance work.")
 
-        st.subheader("Maintenance Records")
-        render_manager_table(load_table("maintenance_records"), [])
+        machines_df = load_table("machines")
+        maintenance_df = load_table("maintenance_records")
+
+        if machines_df.empty:
+            st.info("No machine records available.")
+        else:
+            if not maintenance_df.empty:
+                maintenance_df["downtime_minutes"] = pd.to_numeric(
+                    maintenance_df["downtime_minutes"],
+                    errors="coerce",
+                ).fillna(0)
+
+                maintenance_summary = (
+                    maintenance_df
+                    .groupby("machine_id", as_index=False)
+                    .agg(
+                        total_downtime=("downtime_minutes", "sum"),
+                        maintenance_events=("id", "count"),
+                        open_issues=(
+                            "status",
+                            lambda values: (
+                                values.astype(str).str.lower().eq("open").sum()
+                            ),
+                        ),
+                    )
+                )
+
+                machine_view = machines_df.merge(
+                    maintenance_summary,
+                    left_on="id",
+                    right_on="machine_id",
+                    how="left",
+                )
+            else:
+                machine_view = machines_df.copy()
+                machine_view["total_downtime"] = 0
+                machine_view["maintenance_events"] = 0
+                machine_view["open_issues"] = 0
+
+            machine_view["total_downtime"] = machine_view[
+                "total_downtime"
+            ].fillna(0)
+            machine_view["maintenance_events"] = machine_view[
+                "maintenance_events"
+            ].fillna(0)
+            machine_view["open_issues"] = machine_view["open_issues"].fillna(0)
+
+            def machine_priority(row: pd.Series) -> str:
+                status = str(row.get("status", "")).lower()
+
+                if status in ["broken", "down", "maintenance"]:
+                    return "Critical"
+
+                if row.get("open_issues", 0) > 0:
+                    return "Attention"
+
+                return "Operational"
+
+            machine_view["priority"] = machine_view.apply(
+                machine_priority,
+                axis=1,
+            )
+
+            priority_order = {
+                "Critical": 0,
+                "Attention": 1,
+                "Operational": 2,
+            }
+            machine_view["_priority_order"] = (
+                machine_view["priority"].map(priority_order).fillna(99)
+            )
+            machine_view = (
+                machine_view
+                .sort_values(by=["_priority_order", "name"])
+                .drop(columns=["_priority_order"])
+            )
+
+            critical_count = len(
+                machine_view[machine_view["priority"] == "Critical"]
+            )
+            attention_count = len(
+                machine_view[machine_view["priority"] == "Attention"]
+            )
+            total_downtime = machine_view["total_downtime"].sum()
+
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Machines", len(machine_view))
+            col2.metric("Critical Machines", critical_count)
+            col3.metric("Total Downtime", f"{total_downtime:,.0f} min")
+
+            st.subheader("Machine Status")
+            render_manager_table(
+                machine_view,
+                [
+                    "priority",
+                    "status",
+                    "machine_code",
+                    "name",
+                    "total_downtime",
+                    "open_issues",
+                    "maintenance_events",
+                    "last_maintenance_date",
+                ],
+            )
+
+            st.subheader("Maintenance Records")
+
+            if maintenance_df.empty:
+                st.info("No maintenance records available.")
+            else:
+                render_manager_table(
+                    maintenance_df,
+                    [
+                        "status",
+                        "issue_type",
+                        "downtime_minutes",
+                        "description",
+                        "reported_at",
+                        "resolved_at",
+                    ],
+                )
 
     elif page == "✅ Quality":
         st.title("Quality Management")
