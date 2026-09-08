@@ -178,6 +178,8 @@ def style_status(value: object) -> str:
         "normal",
         "low",
         "healthy",
+        "resolved",
+        "closed",
     ]:
         return "color: #15803d; font-weight: 600"
 
@@ -189,6 +191,7 @@ def style_status(value: object) -> str:
         "medium",
         "at risk",
         "late",
+        "investigating",
     ]:
         return "color: #b45309; font-weight: 600"
 
@@ -1167,18 +1170,65 @@ try:
             )
 
     elif page == "🛡️ Safety & Risk":
-        st.title("Safety and Compliance")
+        st.title("Safety & Risk")
+        st.caption("Prioritize open incidents and serious operational risks.")
+
         safety_df = load_table("safety_incidents")
-        render_manager_table(
-            safety_df,
-            [
-                "severity",
-                "status",
-                "incident_code",
-                "incident_date",
-                "incident_type",
-                "description",
-            ],
-        )
+
+        if safety_df.empty:
+            st.success("No safety incidents recorded.")
+        else:
+            safety_df["severity"] = safety_df["severity"].astype(str).str.title()
+            safety_df["status"] = safety_df["status"].astype(str).str.title()
+
+            severity_order = {
+                "Critical": 0,
+                "High": 1,
+                "Medium": 2,
+                "Low": 3,
+            }
+            status_order = {
+                "Open": 0,
+                "Investigating": 1,
+                "Resolved": 2,
+                "Closed": 3,
+            }
+            safety_df["_severity_order"] = (
+                safety_df["severity"].map(severity_order).fillna(99)
+            )
+            safety_df["_status_order"] = (
+                safety_df["status"].map(status_order).fillna(99)
+            )
+            safety_df = (
+                safety_df
+                .sort_values(
+                    by=["_status_order", "_severity_order", "incident_date"],
+                    ascending=[True, True, False],
+                )
+                .drop(columns=["_severity_order", "_status_order"])
+            )
+
+            open_count = len(safety_df[safety_df["status"] == "Open"])
+            serious_count = len(
+                safety_df[safety_df["severity"].isin(["Critical", "High"])]
+            )
+
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Total Incidents", len(safety_df))
+            col2.metric("Open Incidents", open_count)
+            col3.metric("Critical or High", serious_count)
+
+            st.subheader("Safety Incident Monitor")
+            render_manager_table(
+                safety_df,
+                [
+                    "severity",
+                    "status",
+                    "incident_code",
+                    "incident_date",
+                    "incident_type",
+                    "description",
+                ],
+            )
 except Exception as error:
     st.error(f"Unable to load {page.lower()} data: {error}")
