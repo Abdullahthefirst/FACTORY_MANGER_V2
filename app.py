@@ -8,6 +8,49 @@ from supabase import create_client
 
 st.set_page_config(page_title="FactoryOps", layout="wide")
 
+st.markdown(
+    """
+    <style>
+        .block-container {
+            padding-top: 2rem;
+            padding-bottom: 3rem;
+        }
+
+        [data-testid="stMetric"] {
+            background-color: #f7f9fc;
+            border: 1px solid #e3e8ef;
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+        }
+
+        [data-testid="stMetricLabel"] {
+            color: #64748b;
+            font-size: 0.85rem;
+        }
+
+        [data-testid="stMetricValue"] {
+            color: #17324d;
+            font-size: 1.8rem;
+            font-weight: 700;
+        }
+
+        h1, h2, h3 {
+            color: #17324d;
+        }
+
+        [data-testid="stSidebar"] {
+            background-color: #f8fafc;
+        }
+
+        [data-testid="stSidebar"] h1 {
+            color: #17324d;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # Configure these values in Streamlit Cloud -> App -> Settings -> Secrets.
 # Use only the publishable Supabase key; never use a database password or
 # service-role key in Streamlit Cloud.
@@ -102,6 +145,33 @@ def manager_view(df: pd.DataFrame) -> pd.DataFrame:
     return df.drop(columns=hidden_columns, errors="ignore")
 
 
+def style_status(value: object) -> str:
+    """Apply manager-friendly status colors to dataframe cells."""
+    value = str(value).lower()
+
+    if value in ["operational", "completed", "approved", "present", "received"]:
+        return "color: #15803d; font-weight: 600"
+
+    if value in ["pending", "in progress", "ordered", "planned"]:
+        return "color: #b45309; font-weight: 600"
+
+    if value in ["delayed", "open", "maintenance", "absent", "rejected"]:
+        return "color: #dc2626; font-weight: 600"
+
+    return ""
+
+
+def show_manager_table(df: pd.DataFrame) -> None:
+    """Render a readable, status-aware table for managers."""
+    display_df = manager_view(df)
+
+    if "status" in display_df.columns:
+        styled_df = display_df.style.map(style_status, subset=["status"])
+        st.dataframe(styled_df, use_container_width=True, hide_index=True)
+    else:
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+
 try:
     if page == "📊 Overview":
         production_df = load_table("production_records")
@@ -110,7 +180,11 @@ try:
         machines_df = load_table("machines")
         alerts_df = load_table("factory_alerts")
 
-        st.title("Factory Manager Dashboard")
+        st.title("Factory Overview")
+        st.caption(
+            "A real-time view of production, orders, inventory, machines, "
+            "and operational risks."
+        )
 
         total_production = (
             production_df["actual_quantity"].sum()
@@ -156,20 +230,17 @@ try:
                 * 100
             ).round(1)
 
-            st.dataframe(
-                manager_view(
-                    production_df[
-                        [
-                            "production_date",
-                            "planned_quantity",
-                            "actual_quantity",
-                            "rejected_quantity",
-                            "downtime_minutes",
-                            "efficiency",
-                        ]
+            show_manager_table(
+                production_df[
+                    [
+                        "production_date",
+                        "planned_quantity",
+                        "actual_quantity",
+                        "rejected_quantity",
+                        "downtime_minutes",
+                        "efficiency",
                     ]
-                ),
-                use_container_width=True,
+                ]
             )
         else:
             st.info("No production records available.")
@@ -183,7 +254,7 @@ try:
 
             if not attention_machines.empty:
                 st.warning("Some machines require attention.")
-                st.dataframe(manager_view(attention_machines), use_container_width=True)
+                show_manager_table(attention_machines)
             else:
                 st.success("All machines are operational.")
 
@@ -199,7 +270,7 @@ try:
                 orders_df["status"].str.lower() == "delayed"
             ]
             st.metric("Delayed Orders", len(delayed_orders))
-            st.dataframe(manager_view(orders_df), use_container_width=True)
+            show_manager_table(orders_df)
 
     elif page == "🏭 Production":
         st.title("Production Monitoring")
@@ -334,36 +405,27 @@ try:
             )
 
             st.subheader("Production Records")
-            st.dataframe(manager_view(filtered_df), use_container_width=True)
+            show_manager_table(filtered_df)
 
     elif page == "📦 Inventory & Supply":
         st.title("Inventory and Supply")
         st.subheader("Inventory")
-        st.dataframe(manager_view(load_table("inventory")), use_container_width=True)
+        show_manager_table(load_table("inventory"))
 
         st.subheader("Purchase Orders")
-        st.dataframe(
-            manager_view(load_table("purchase_orders")),
-            use_container_width=True,
-        )
+        show_manager_table(load_table("purchase_orders"))
 
     elif page == "⚙️ Machines & Maintenance":
         st.title("Machines and Maintenance")
         st.subheader("Machines")
-        st.dataframe(manager_view(load_table("machines")), use_container_width=True)
+        show_manager_table(load_table("machines"))
 
         st.subheader("Maintenance Records")
-        st.dataframe(
-            manager_view(load_table("maintenance_records")),
-            use_container_width=True,
-        )
+        show_manager_table(load_table("maintenance_records"))
 
     elif page == "✅ Quality":
         st.title("Quality Management")
-        st.dataframe(
-            manager_view(load_table("quality_inspections")),
-            use_container_width=True,
-        )
+        show_manager_table(load_table("quality_inspections"))
 
     elif page == "👥 Workforce":
         st.title("Workforce Management")
@@ -393,31 +455,25 @@ try:
         if employees_df.empty:
             st.info("No employees available.")
         else:
-            st.dataframe(manager_view(employees_df), use_container_width=True)
+            show_manager_table(employees_df)
 
         st.subheader("Attendance")
 
         if attendance_df.empty:
             st.info("No attendance records available.")
         else:
-            st.dataframe(manager_view(attendance_df), use_container_width=True)
+            show_manager_table(attendance_df)
 
     elif page == "🚚 Logistics":
         st.title("Logistics")
-        st.dataframe(manager_view(load_table("shipments")), use_container_width=True)
+        show_manager_table(load_table("shipments"))
 
     elif page == "💰 Costs":
         st.title("Costs and Profitability")
-        st.dataframe(
-            manager_view(load_table("operating_costs")),
-            use_container_width=True,
-        )
+        show_manager_table(load_table("operating_costs"))
 
     elif page == "🛡️ Safety & Risk":
         st.title("Safety and Compliance")
-        st.dataframe(
-            manager_view(load_table("safety_incidents")),
-            use_container_width=True,
-        )
+        show_manager_table(load_table("safety_incidents"))
 except Exception as error:
     st.error(f"Unable to load {page.lower()} data: {error}")
