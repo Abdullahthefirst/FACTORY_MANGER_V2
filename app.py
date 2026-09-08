@@ -1,5 +1,6 @@
 """Streamlit application entry point."""
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 from supabase import create_client
@@ -49,6 +50,9 @@ if st.session_state.user is None:
 
     st.stop()
 
+st.sidebar.title("FactoryOps")
+st.sidebar.caption("Manager Control Center")
+
 if st.sidebar.button("Log out"):
     supabase.auth.sign_out()
     st.session_state.user = None
@@ -58,18 +62,18 @@ if st.sidebar.button("Log out"):
 
 
 page = st.sidebar.radio(
-    "Factory Modules",
+    "Navigate",
     [
-        "Dashboard",
-        "Orders",
-        "Production",
-        "Inventory",
-        "Maintenance",
-        "Quality",
-        "Workforce",
-        "Purchasing",
-        "Costs",
-        "Safety",
+        "📊 Overview",
+        "📦 Orders & Demand",
+        "🏭 Production",
+        "📦 Inventory & Supply",
+        "⚙️ Machines & Maintenance",
+        "✅ Quality",
+        "👥 Workforce",
+        "🚚 Logistics",
+        "💰 Costs",
+        "🛡️ Safety & Risk",
     ],
 )
 
@@ -80,8 +84,26 @@ def load_table(table_name: str) -> pd.DataFrame:
     return pd.DataFrame(response.data)
 
 
+def manager_view(df: pd.DataFrame) -> pd.DataFrame:
+    """Hide database identifiers from manager-facing tables."""
+    hidden_columns = [
+        "id",
+        "department_id",
+        "employee_id",
+        "product_id",
+        "material_id",
+        "supplier_id",
+        "machine_id",
+        "production_line_id",
+        "shift_id",
+        "order_id",
+        "production_record_id",
+    ]
+    return df.drop(columns=hidden_columns, errors="ignore")
+
+
 try:
-    if page == "Dashboard":
+    if page == "📊 Overview":
         production_df = load_table("production_records")
         orders_df = load_table("customer_orders")
         inventory_df = load_table("inventory")
@@ -135,16 +157,18 @@ try:
             ).round(1)
 
             st.dataframe(
-                production_df[
-                    [
-                        "production_date",
-                        "planned_quantity",
-                        "actual_quantity",
-                        "rejected_quantity",
-                        "downtime_minutes",
-                        "efficiency",
+                manager_view(
+                    production_df[
+                        [
+                            "production_date",
+                            "planned_quantity",
+                            "actual_quantity",
+                            "rejected_quantity",
+                            "downtime_minutes",
+                            "efficiency",
+                        ]
                     ]
-                ],
+                ),
                 use_container_width=True,
             )
         else:
@@ -159,11 +183,11 @@ try:
 
             if not attention_machines.empty:
                 st.warning("Some machines require attention.")
-                st.dataframe(attention_machines, use_container_width=True)
+                st.dataframe(manager_view(attention_machines), use_container_width=True)
             else:
                 st.success("All machines are operational.")
 
-    elif page == "Orders":
+    elif page == "📦 Orders & Demand":
         st.title("Orders and Demand")
         orders_df = load_table("customer_orders")
 
@@ -175,9 +199,9 @@ try:
                 orders_df["status"].str.lower() == "delayed"
             ]
             st.metric("Delayed Orders", len(delayed_orders))
-            st.dataframe(orders_df, use_container_width=True)
+            st.dataframe(manager_view(orders_df), use_container_width=True)
 
-    elif page == "Production":
+    elif page == "🏭 Production":
         st.title("Production Monitoring")
         production_df = load_table("production_records")
 
@@ -220,29 +244,122 @@ try:
 
             chart_data = (
                 filtered_df
-                .groupby("production_date")[["planned_quantity", "actual_quantity"]]
+                .groupby("production_date", as_index=False)[
+                    ["planned_quantity", "actual_quantity"]
+                ]
                 .sum()
             )
 
+            chart_data["production_date"] = pd.to_datetime(
+                chart_data["production_date"]
+            )
+
+            chart_data = chart_data.melt(
+                id_vars=["production_date"],
+                value_vars=["planned_quantity", "actual_quantity"],
+                var_name="Production Type",
+                value_name="Quantity",
+            )
+
+            point_count = chart_data["production_date"].nunique()
+
+            if point_count <= 7:
+                chart_height = 300
+            elif point_count <= 31:
+                chart_height = 400
+            elif point_count <= 90:
+                chart_height = 480
+            else:
+                chart_height = 560
+
+            if point_count == 1:
+                production_chart = (
+                    alt.Chart(chart_data)
+                    .mark_bar()
+                    .encode(
+                        x=alt.X("Production Type:N", title=None),
+                        y=alt.Y(
+                            "Quantity:Q",
+                            title="Units",
+                            scale=alt.Scale(zero=True),
+                        ),
+                        color=alt.Color("Production Type:N", title="Metric"),
+                        tooltip=["Production Type:N", "Quantity:Q"],
+                    )
+                )
+            else:
+                production_chart = (
+                    alt.Chart(chart_data)
+                    .mark_line(point=True)
+                    .encode(
+                        x=alt.X(
+                            "production_date:T",
+                            title="Production Date",
+                            axis=alt.Axis(format="%b %d", labelAngle=-45),
+                        ),
+                        y=alt.Y(
+                            "Quantity:Q",
+                            title="Units",
+                            scale=alt.Scale(zero=True),
+                        ),
+                        color=alt.Color("Production Type:N", title="Metric"),
+                        tooltip=[
+                            alt.Tooltip(
+                                "production_date:T",
+                                title="Date",
+                                format="%Y-%m-%d",
+                            ),
+                            alt.Tooltip("Production Type:N", title="Type"),
+                            alt.Tooltip(
+                                "Quantity:Q",
+                                title="Quantity",
+                                format=",.0f",
+                            ),
+                        ],
+                    )
+                )
+
             st.subheader("Planned vs Actual Production")
-            st.line_chart(chart_data)
+            st.altair_chart(
+                production_chart
+                .properties(height=chart_height)
+                .interactive(),
+                use_container_width=True,
+            )
 
             st.subheader("Production Records")
-            st.dataframe(filtered_df, use_container_width=True)
+            st.dataframe(manager_view(filtered_df), use_container_width=True)
 
-    elif page == "Inventory":
-        st.title("Inventory Management")
-        st.dataframe(load_table("inventory"), use_container_width=True)
+    elif page == "📦 Inventory & Supply":
+        st.title("Inventory and Supply")
+        st.subheader("Inventory")
+        st.dataframe(manager_view(load_table("inventory")), use_container_width=True)
 
-    elif page == "Maintenance":
-        st.title("Maintenance Management")
-        st.dataframe(load_table("maintenance_records"), use_container_width=True)
+        st.subheader("Purchase Orders")
+        st.dataframe(
+            manager_view(load_table("purchase_orders")),
+            use_container_width=True,
+        )
 
-    elif page == "Quality":
+    elif page == "⚙️ Machines & Maintenance":
+        st.title("Machines and Maintenance")
+        st.subheader("Machines")
+        st.dataframe(manager_view(load_table("machines")), use_container_width=True)
+
+        st.subheader("Maintenance Records")
+        st.dataframe(
+            manager_view(load_table("maintenance_records")),
+            use_container_width=True,
+        )
+
+    elif page == "✅ Quality":
         st.title("Quality Management")
-        st.dataframe(load_table("quality_inspections"), use_container_width=True)
+        st.dataframe(
+            manager_view(load_table("quality_inspections")),
+            use_container_width=True,
+        )
 
-    elif page == "Workforce":
+    elif page == "👥 Workforce":
         st.title("Workforce Management")
 
         employees_df = load_table("employees")
@@ -270,25 +387,31 @@ try:
         if employees_df.empty:
             st.info("No employees available.")
         else:
-            st.dataframe(employees_df, use_container_width=True)
+            st.dataframe(manager_view(employees_df), use_container_width=True)
 
         st.subheader("Attendance")
 
         if attendance_df.empty:
             st.info("No attendance records available.")
         else:
-            st.dataframe(attendance_df, use_container_width=True)
+            st.dataframe(manager_view(attendance_df), use_container_width=True)
 
-    elif page == "Purchasing":
-        st.title("Purchasing and Suppliers")
-        st.dataframe(load_table("purchase_orders"), use_container_width=True)
+    elif page == "🚚 Logistics":
+        st.title("Logistics")
+        st.dataframe(manager_view(load_table("shipments")), use_container_width=True)
 
-    elif page == "Costs":
+    elif page == "💰 Costs":
         st.title("Costs and Profitability")
-        st.dataframe(load_table("operating_costs"), use_container_width=True)
+        st.dataframe(
+            manager_view(load_table("operating_costs")),
+            use_container_width=True,
+        )
 
-    elif page == "Safety":
+    elif page == "🛡️ Safety & Risk":
         st.title("Safety and Compliance")
-        st.dataframe(load_table("safety_incidents"), use_container_width=True)
+        st.dataframe(
+            manager_view(load_table("safety_incidents")),
+            use_container_width=True,
+        )
 except Exception as error:
     st.error(f"Unable to load {page.lower()} data: {error}")
