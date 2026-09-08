@@ -1167,11 +1167,12 @@ try:
                 leave_count = (attendance_status == "leave").sum()
                 total_overtime = attendance_view["overtime_hours"].sum()
 
-                col1, col2, col3, col4 = st.columns(4)
+                col1, col2, col3, col4, col5 = st.columns(5)
                 col1.metric("Employees", len(employees_df))
                 col2.metric("Present", present_count)
                 col3.metric("Absent", absent_count)
-                col4.metric("Overtime Hours", f"{total_overtime:,.1f}")
+                col4.metric("On Leave", leave_count)
+                col5.metric("Overtime Hours", f"{total_overtime:,.1f}")
 
                 st.subheader("Attendance Overview")
                 render_manager_table(
