@@ -246,57 +246,10 @@ def render_manager_table(
     df: pd.DataFrame,
     preferred_columns: list[str],
 ) -> None:
-    """Render a formatted, manager-first table."""
+    """Render a manager table with direct display formatting."""
     display_df = manager_view(df).copy()
     display_df = arrange_columns(display_df, preferred_columns)
 
-    date_columns = [
-        "production_date",
-        "due_date",
-        "order_date",
-        "expected_date",
-        "cost_date",
-        "incident_date",
-        "attendance_date",
-    ]
-    for column in date_columns:
-        if column in display_df.columns:
-            display_df[column] = pd.to_datetime(
-                display_df[column],
-                errors="coerce",
-            )
-
-    datetime_columns = ["reported_at", "resolved_at", "created_at"]
-    for column in datetime_columns:
-        if column in display_df.columns:
-            display_df[column] = pd.to_datetime(
-                display_df[column],
-                errors="coerce",
-            )
-
-    numeric_columns = [
-        "quantity",
-        "planned_quantity",
-        "actual_quantity",
-        "rejected_quantity",
-        "downtime_minutes",
-        "total_downtime",
-        "reorder_level",
-        "reorder_gap",
-        "ordered_quantity",
-        "received_quantity",
-        "amount",
-        "overtime_hours",
-        "defect_rate",
-    ]
-    for column in numeric_columns:
-        if column in display_df.columns:
-            display_df[column] = pd.to_numeric(
-                display_df[column],
-                errors="coerce",
-            )
-
-    column_config = {}
     readable_names = {
         "status": "Status",
         "priority": "Priority",
@@ -313,6 +266,8 @@ def render_manager_table(
         "stock_status": "Stock Status",
         "material_code": "Material Code",
         "material_name": "Material",
+        "quantity": "Quantity",
+        "unit": "Unit",
         "reorder_level": "Reorder Level",
         "reorder_gap": "Reorder Gap",
         "supplier_name": "Supplier",
@@ -343,43 +298,53 @@ def render_manager_table(
         "description": "Description",
     }
 
-    for column, title in readable_names.items():
-        if column in display_df.columns:
-            column_config[column] = st.column_config.TextColumn(
-                title,
-                width="medium",
-            )
-
+    date_columns = [
+        "production_date",
+        "due_date",
+        "order_date",
+        "expected_date",
+        "cost_date",
+        "incident_date",
+        "attendance_date",
+    ]
     for column in date_columns:
         if column in display_df.columns:
-            column_config[column] = st.column_config.DateColumn(
-                readable_names.get(column, column),
-                format="YYYY-MM-DD",
-            )
+            display_df[column] = pd.to_datetime(
+                display_df[column],
+                errors="coerce",
+            ).dt.strftime("%Y-%m-%d")
 
-    for column in datetime_columns:
+    integer_columns = [
+        "quantity",
+        "planned_quantity",
+        "actual_quantity",
+        "rejected_quantity",
+        "downtime_minutes",
+        "total_downtime",
+        "reorder_level",
+        "reorder_gap",
+        "ordered_quantity",
+        "received_quantity",
+        "open_issues",
+        "maintenance_events",
+    ]
+    for column in integer_columns:
         if column in display_df.columns:
-            column_config[column] = st.column_config.DatetimeColumn(
-                readable_names.get(column, column),
-                format="YYYY-MM-DD HH:mm",
-            )
+            display_df[column] = pd.to_numeric(
+                display_df[column],
+                errors="coerce",
+            ).fillna(0).map(lambda value: f"{value:,.0f}")
 
-    for column in numeric_columns:
-        if column in display_df.columns:
-            column_config[column] = st.column_config.NumberColumn(
-                readable_names.get(column, column),
-                format="%,.0f",
-            )
+    display_df = display_df.rename(columns=readable_names)
 
     styled_df = display_df.style
 
-    for column in ["status", "priority", "severity", "stock_status"]:
+    for column in ["Status", "Priority", "Severity", "Stock Status"]:
         if column in display_df.columns:
             styled_df = styled_df.map(style_status, subset=[column])
 
     st.dataframe(
         styled_df,
-        column_config=column_config,
         use_container_width=True,
         hide_index=True,
         height=400,
