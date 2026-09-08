@@ -915,7 +915,101 @@ try:
 
     elif page == "✅ Quality":
         st.title("Quality Management")
-        render_manager_table(load_table("quality_inspections"), [])
+        st.caption("Monitor defects, rejected units, and quality risks.")
+
+        quality_df = load_table("quality_inspections")
+
+        if quality_df.empty:
+            st.info("No quality inspection records available.")
+        else:
+            quality_df["inspected_quantity"] = pd.to_numeric(
+                quality_df["inspected_quantity"],
+                errors="coerce",
+            ).fillna(0)
+            quality_df["rejected_quantity"] = pd.to_numeric(
+                quality_df["rejected_quantity"],
+                errors="coerce",
+            ).fillna(0)
+            quality_df["defect_rate"] = 0.0
+
+            valid_rows = quality_df["inspected_quantity"] > 0
+            quality_df.loc[valid_rows, "defect_rate"] = (
+                quality_df.loc[valid_rows, "rejected_quantity"]
+                / quality_df.loc[valid_rows, "inspected_quantity"]
+                * 100
+            )
+
+            def quality_priority(rate: float) -> str:
+                if rate >= 5:
+                    return "Critical"
+
+                if rate >= 2:
+                    return "Attention"
+
+                return "Normal"
+
+            quality_df["priority"] = quality_df["defect_rate"].apply(
+                quality_priority
+            )
+
+            priority_order = {
+                "Critical": 0,
+                "Attention": 1,
+                "Normal": 2,
+            }
+            quality_df["_priority_order"] = (
+                quality_df["priority"].map(priority_order).fillna(99)
+            )
+            quality_df = (
+                quality_df
+                .sort_values(
+                    by=["_priority_order", "defect_rate"],
+                    ascending=[True, False],
+                )
+                .drop(columns=["_priority_order"])
+            )
+
+            total_inspected = quality_df["inspected_quantity"].sum()
+            total_rejected = quality_df["rejected_quantity"].sum()
+            overall_defect_rate = (
+                total_rejected / total_inspected * 100
+                if total_inspected > 0
+                else 0
+            )
+            critical_count = len(
+                quality_df[quality_df["priority"] == "Critical"]
+            )
+
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Inspected Units", f"{total_inspected:,.0f}")
+            col2.metric("Rejected Units", f"{total_rejected:,.0f}")
+            col3.metric("Overall Defect Rate", f"{overall_defect_rate:.2f}%")
+
+            st.subheader("Quality Risk Monitor")
+            render_manager_table(
+                quality_df,
+                [
+                    "priority",
+                    "defect_type",
+                    "defect_rate",
+                    "inspected_quantity",
+                    "rejected_quantity",
+                    "inspection_date",
+                    "notes",
+                ],
+            )
+
+            st.subheader("Defects by Type")
+            defect_summary = (
+                quality_df
+                .groupby("defect_type", as_index=False)["rejected_quantity"]
+                .sum()
+                .sort_values("rejected_quantity", ascending=False)
+            )
+            st.bar_chart(
+                defect_summary.set_index("defect_type"),
+                height=300,
+            )
 
     elif page == "👥 Workforce":
         st.title("Workforce Management")
