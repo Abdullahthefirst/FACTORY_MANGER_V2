@@ -118,7 +118,7 @@ def render_ai_page(load_table: Callable[[str], pd.DataFrame]) -> None:
                     ]
                 )
                 response = client.models.generate_content(
-                    model="gemini-2.0-flash",
+                    model="gemini-3.6-flash",
                     contents=_make_ai_prompt(
                         "Provide a concise operational summary and highlight top risks for the factory.",
                         context,
@@ -138,7 +138,7 @@ def render_ai_page(load_table: Callable[[str], pd.DataFrame]) -> None:
         st.subheader("AI Suggestions")
         try:
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-3.6-flash",
                 contents=_make_ai_prompt(
                     "Provide 5 concise operational suggestions for a factory manager focused on production, inventory, quality, and maintenance.",
                     None,
@@ -180,7 +180,7 @@ def render_ai_page(load_table: Callable[[str], pd.DataFrame]) -> None:
                     ),
                 )
                 response = client.models.generate_content(
-                    model="gemini-2.0-flash",
+                    model="gemini-3.6-flash",
                     contents=prompt,
                 )
                 answer = str(response.text)
