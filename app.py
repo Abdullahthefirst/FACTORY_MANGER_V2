@@ -180,6 +180,8 @@ def style_status(value: object) -> str:
         "healthy",
         "resolved",
         "closed",
+        "on track",
+        "clear",
     ]:
         return "color: #15803d; font-weight: 600"
 
@@ -192,6 +194,7 @@ def style_status(value: object) -> str:
         "at risk",
         "late",
         "investigating",
+        "below target",
     ]:
         return "color: #b45309; font-weight: 600"
 
@@ -207,6 +210,8 @@ def style_status(value: object) -> str:
         "urgent",
         "critical",
         "leave",
+        "attention required",
+        "open incidents",
     ]:
         return "color: #dc2626; font-weight: 600"
 
@@ -222,8 +227,9 @@ def render_manager_table(
     display_df = arrange_columns(display_df, preferred_columns)
     styled_df = display_df.style
 
-    for column in ["status", "priority", "severity", "risk", "stock_status"]:
-        if column in display_df.columns:
+    styled_columns = {"status", "priority", "severity", "risk", "stock_status"}
+    for column in display_df.columns:
+        if column.lower() in styled_columns:
             styled_df = styled_df.map(style_status, subset=[column])
 
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
@@ -231,84 +237,69 @@ def render_manager_table(
 
 try:
     if page == "📊 Overview":
+        st.title("Factory Overview")
+        st.caption("Manager-level summary of today's factory performance.")
+
         production_df = load_table("production_records")
         orders_df = load_table("customer_orders")
+        machines_df = load_table("machines")
+        quality_df = load_table("quality_inspections")
+        safety_df = load_table("safety_incidents")
         inventory_df = load_table("inventory")
         materials_df = load_table("materials")
-        machines_df = load_table("machines")
-        safety_df = load_table("safety_incidents")
 
-        st.title("Factory Overview")
-        st.caption(
-            "A real-time view of production, orders, inventory, machines, "
-            "and operational risks."
-        )
+        actual_production = 0
+        planned_production = 0
+        production_efficiency = 0
 
-        total_production = (
-            production_df["actual_quantity"].sum()
-            if not production_df.empty else 0
-        )
-        planned_production = (
-            production_df["planned_quantity"].sum()
-            if not production_df.empty else 0
-        )
-        rejected_units = (
-            production_df["rejected_quantity"].sum()
-            if not production_df.empty else 0
-        )
-        downtime_minutes = (
-            production_df["downtime_minutes"].sum()
-            if not production_df.empty else 0
-        )
-        active_orders = (
-            len(orders_df[orders_df["status"].isin(["pending", "in production"])])
-            if not orders_df.empty else 0
-        )
-        open_machines = (
-            len(machines_df[machines_df["status"] != "operational"])
-            if not machines_df.empty else 0
-        )
+        if not production_df.empty:
+            production_df["actual_quantity"] = pd.to_numeric(
+                production_df["actual_quantity"],
+                errors="coerce",
+            ).fillna(0)
+            production_df["planned_quantity"] = pd.to_numeric(
+                production_df["planned_quantity"],
+                errors="coerce",
+            ).fillna(0)
+            actual_production = production_df["actual_quantity"].sum()
+            planned_production = production_df["planned_quantity"].sum()
 
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Actual Production", f"{total_production:,.0f}")
-        col2.metric("Planned Production", f"{planned_production:,.0f}")
-        col3.metric("Active Orders", active_orders)
-        col4.metric("Rejected Units", f"{rejected_units:,.0f}")
+            if planned_production > 0:
+                production_efficiency = (
+                    actual_production / planned_production * 100
+                )
 
-        col5, col6 = st.columns(2)
-        col5.metric("Downtime", f"{downtime_minutes:,.0f} minutes")
-        col6.metric("Machines Requiring Attention", open_machines)
-
-        st.subheader("Attention Required")
-
-        alerts = []
+        active_orders = 0
+        delayed_orders = 0
 
         if not orders_df.empty:
-            delayed_orders = orders_df[
-                orders_df["status"].astype(str).str.lower() == "delayed"
-            ]
+            order_status = orders_df["status"].astype(str).str.lower()
+            active_orders = order_status.isin(["pending", "in production"]).sum()
+            delayed_orders = (order_status == "delayed").sum()
 
-            for _, row in delayed_orders.iterrows():
-                alerts.append(
-                    {
-                        "status": "Delayed",
-                        "severity": "High",
-                        "area": "Orders",
-                        "message": (
-                            f"{row.get('customer_name', 'Customer')} "
-                            "order is delayed"
-                        ),
-                    }
-                )
+        machine_issues = 0
+
+        if not machines_df.empty:
+            machine_issues = (
+                machines_df["status"].astype(str).str.lower().ne("operational").sum()
+            )
+
+        open_safety = 0
+
+        if not safety_df.empty:
+            open_safety = (
+                safety_df["status"].astype(str).str.lower().eq("open").sum()
+            )
+
+        low_stock = 0
 
         if not inventory_df.empty and not materials_df.empty:
             inventory_check = inventory_df.merge(
-                materials_df[["id", "name", "reorder_level"]],
+                materials_df[["id", "reorder_level"]],
                 left_on="material_id",
                 right_on="id",
                 how="left",
             )
-
             inventory_check["quantity"] = pd.to_numeric(
                 inventory_check["quantity"],
                 errors="coerce",
@@ -317,120 +308,39 @@ try:
                 inventory_check["reorder_level"],
                 errors="coerce",
             ).fillna(0)
-
-            low_stock = inventory_check[
+            low_stock = (
                 inventory_check["quantity"] <= inventory_check["reorder_level"]
-            ]
+            ).sum()
 
-            for _, row in low_stock.iterrows():
-                alerts.append(
-                    {
-                        "status": "Low Stock",
-                        "severity": "High",
-                        "area": "Inventory",
-                        "message": (
-                            f"{row.get('name', 'Material')} "
-                            "is below reorder level"
-                        ),
-                    }
-                )
+        col1, col2, col3, col4, col5 = st.columns(5)
+        col1.metric("Production Efficiency", f"{production_efficiency:.1f}%")
+        col2.metric("Active Orders", active_orders)
+        col3.metric("Delayed Orders", delayed_orders)
+        col4.metric("Low-Stock Materials", low_stock)
+        col5.metric("Machine Issues", machine_issues)
 
-        if not machines_df.empty:
-            machines_needing_attention = machines_df[
-                machines_df["status"].astype(str).str.lower() != "operational"
-            ]
-
-            for _, row in machines_needing_attention.iterrows():
-                alerts.append(
-                    {
-                        "status": "Attention",
-                        "severity": "High",
-                        "area": "Machines",
-                        "message": (
-                            f"{row.get('name', 'Machine')} "
-                            f"status: {row.get('status', 'Unknown')}"
-                        ),
-                    }
-                )
-
-        if not safety_df.empty:
-            open_incidents = safety_df[
-                safety_df["status"].astype(str).str.lower() == "open"
-            ]
-
-            for _, row in open_incidents.iterrows():
-                alerts.append(
-                    {
-                        "status": "Open",
-                        "severity": row.get("severity", "Medium"),
-                        "area": "Safety",
-                        "message": row.get(
-                            "description",
-                            "Open safety incident",
-                        ),
-                    }
-                )
-
-        if alerts:
-            alerts_display = pd.DataFrame(alerts)
-            render_manager_table(
-                alerts_display,
-                ["status", "severity", "area", "message"],
-            )
-        else:
-            st.success("No urgent operational issues detected.")
-
-        st.subheader("Production Performance")
-
-        if not production_df.empty:
-            production_df["efficiency"] = (
-                production_df["actual_quantity"]
-                / production_df["planned_quantity"]
-                * 100
-            ).round(1)
-
-            render_manager_table(
-                production_df[
-                    [
-                        "production_date",
-                        "planned_quantity",
-                        "actual_quantity",
-                        "rejected_quantity",
-                        "downtime_minutes",
-                        "efficiency",
-                    ]
+        st.subheader("Factory Attention Summary")
+        summary_df = pd.DataFrame(
+            {
+                "Area": ["Production", "Orders", "Inventory", "Machines", "Safety"],
+                "Status": [
+                    "On Track" if production_efficiency >= 90 else "Below Target",
+                    "Delayed" if delayed_orders > 0 else "On Track",
+                    "Low Stock" if low_stock > 0 else "Healthy",
+                    "Attention Required" if machine_issues > 0 else "Operational",
+                    "Open Incidents" if open_safety > 0 else "Clear",
                 ],
-                [
-                    "production_date",
-                    "planned_quantity",
-                    "actual_quantity",
-                    "rejected_quantity",
-                    "downtime_minutes",
+                "Count": [
+                    f"{actual_production:,.0f} units produced",
+                    f"{delayed_orders} delayed",
+                    f"{low_stock} below reorder level",
+                    f"{machine_issues} needing attention",
+                    f"{open_safety} open incidents",
                 ],
-            )
-        else:
-            st.info("No production records available.")
+            }
+        )
 
-        st.subheader("Machines Requiring Attention")
-
-        if not machines_df.empty:
-            attention_machines = machines_df[
-                machines_df["status"] != "operational"
-            ]
-
-            if not attention_machines.empty:
-                st.warning("Some machines require attention.")
-                render_manager_table(
-                    attention_machines,
-                    [
-                        "status",
-                        "machine_code",
-                        "name",
-                        "last_maintenance_date",
-                    ],
-                )
-            else:
-                st.success("All machines are operational.")
+        render_manager_table(summary_df, ["Status", "Area", "Count"])
 
     elif page == "📦 Orders & Demand":
         st.title("Orders & Demand")
