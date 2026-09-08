@@ -184,15 +184,51 @@ try:
         if production_df.empty:
             st.info("No production records available.")
         else:
-            st.metric(
-                "Total Actual Production",
-                f"{production_df['actual_quantity'].sum():,.0f}",
+            production_df["production_date"] = pd.to_datetime(
+                production_df["production_date"]
             )
-            st.metric(
-                "Total Downtime",
-                f"{production_df['downtime_minutes'].sum():,.0f} minutes",
+
+            min_date = production_df["production_date"].min().date()
+            max_date = production_df["production_date"].max().date()
+
+            selected_dates = st.date_input(
+                "Production date range",
+                value=(min_date, max_date),
+                min_value=min_date,
+                max_value=max_date,
             )
-            st.dataframe(production_df, use_container_width=True)
+
+            if isinstance(selected_dates, tuple) and len(selected_dates) == 2:
+                start_date, end_date = selected_dates
+                filtered_df = production_df[
+                    (production_df["production_date"].dt.date >= start_date)
+                    & (production_df["production_date"].dt.date <= end_date)
+                ]
+            else:
+                filtered_df = production_df
+
+            planned = filtered_df["planned_quantity"].sum()
+            actual = filtered_df["actual_quantity"].sum()
+            rejected = filtered_df["rejected_quantity"].sum()
+            downtime = filtered_df["downtime_minutes"].sum()
+
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Planned", f"{planned:,.0f}")
+            col2.metric("Actual", f"{actual:,.0f}")
+            col3.metric("Rejected", f"{rejected:,.0f}")
+            col4.metric("Downtime", f"{downtime:,.0f} min")
+
+            chart_data = (
+                filtered_df
+                .groupby("production_date")[["planned_quantity", "actual_quantity"]]
+                .sum()
+            )
+
+            st.subheader("Planned vs Actual Production")
+            st.line_chart(chart_data)
+
+            st.subheader("Production Records")
+            st.dataframe(filtered_df, use_container_width=True)
 
     elif page == "Inventory":
         st.title("Inventory Management")
