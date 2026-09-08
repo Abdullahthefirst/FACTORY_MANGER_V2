@@ -145,6 +145,22 @@ def manager_view(df: pd.DataFrame) -> pd.DataFrame:
     return df.drop(columns=hidden_columns, errors="ignore")
 
 
+def arrange_columns(
+    df: pd.DataFrame,
+    preferred_columns: list[str],
+) -> pd.DataFrame:
+    """Move manager decision fields to the start of a dataframe."""
+    preferred = [
+        column for column in preferred_columns
+        if column in df.columns
+    ]
+    remaining = [
+        column for column in df.columns
+        if column not in preferred
+    ]
+    return df[preferred + remaining]
+
+
 def style_status(value: object) -> str:
     """Apply manager-friendly status colors to dataframe cells."""
     value = str(value).lower()
@@ -161,9 +177,15 @@ def style_status(value: object) -> str:
     return ""
 
 
-def show_manager_table(df: pd.DataFrame) -> None:
+def show_manager_table(
+    df: pd.DataFrame,
+    preferred_columns: list[str] | None = None,
+) -> None:
     """Render a readable, status-aware table for managers."""
     display_df = manager_view(df)
+
+    if preferred_columns:
+        display_df = arrange_columns(display_df, preferred_columns)
 
     if "status" in display_df.columns:
         styled_df = display_df.style.map(style_status, subset=["status"])
@@ -254,7 +276,15 @@ try:
 
             if not attention_machines.empty:
                 st.warning("Some machines require attention.")
-                show_manager_table(attention_machines)
+                show_manager_table(
+                    attention_machines,
+                    [
+                        "status",
+                        "machine_code",
+                        "name",
+                        "last_maintenance_date",
+                    ],
+                )
             else:
                 st.success("All machines are operational.")
 
@@ -270,7 +300,17 @@ try:
                 orders_df["status"].str.lower() == "delayed"
             ]
             st.metric("Delayed Orders", len(delayed_orders))
-            show_manager_table(orders_df)
+            show_manager_table(
+                orders_df,
+                [
+                    "status",
+                    "priority",
+                    "order_code",
+                    "due_date",
+                    "customer_name",
+                    "quantity",
+                ],
+            )
 
     elif page == "🏭 Production":
         st.title("Production Monitoring")
@@ -405,7 +445,19 @@ try:
             )
 
             st.subheader("Production Records")
-            show_manager_table(filtered_df)
+            show_manager_table(
+                filtered_df,
+                [
+                    "status",
+                    "production_code",
+                    "production_date",
+                    "downtime_reason",
+                    "planned_quantity",
+                    "actual_quantity",
+                    "rejected_quantity",
+                    "downtime_minutes",
+                ],
+            )
 
     elif page == "📦 Inventory & Supply":
         st.title("Inventory and Supply")
@@ -418,7 +470,16 @@ try:
     elif page == "⚙️ Machines & Maintenance":
         st.title("Machines and Maintenance")
         st.subheader("Machines")
-        show_manager_table(load_table("machines"))
+        machines_df = load_table("machines")
+        show_manager_table(
+            machines_df,
+            [
+                "status",
+                "machine_code",
+                "name",
+                "last_maintenance_date",
+            ],
+        )
 
         st.subheader("Maintenance Records")
         show_manager_table(load_table("maintenance_records"))
