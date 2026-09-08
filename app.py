@@ -165,13 +165,32 @@ def style_status(value: object) -> str:
     """Apply manager-friendly status colors to dataframe cells."""
     value = str(value).lower()
 
-    if value in ["operational", "completed", "approved", "present", "received"]:
+    if value in [
+        "operational",
+        "completed",
+        "approved",
+        "present",
+        "received",
+        "normal",
+        "low",
+    ]:
         return "color: #15803d; font-weight: 600"
 
-    if value in ["pending", "in progress", "ordered", "planned"]:
+    if value in ["pending", "in progress", "ordered", "planned", "medium"]:
         return "color: #b45309; font-weight: 600"
 
-    if value in ["delayed", "open", "maintenance", "absent", "rejected"]:
+    if value in [
+        "delayed",
+        "open",
+        "maintenance",
+        "absent",
+        "rejected",
+        "low stock",
+        "attention",
+        "high",
+        "urgent",
+        "critical",
+    ]:
         return "color: #dc2626; font-weight: 600"
 
     return ""
@@ -198,8 +217,9 @@ try:
         production_df = load_table("production_records")
         orders_df = load_table("customer_orders")
         inventory_df = load_table("inventory")
+        materials_df = load_table("materials")
         machines_df = load_table("machines")
-        alerts_df = load_table("factory_alerts")
+        safety_df = load_table("safety_incidents")
 
         st.title("Factory Overview")
         st.caption(
@@ -241,6 +261,107 @@ try:
         col5, col6 = st.columns(2)
         col5.metric("Downtime", f"{downtime_minutes:,.0f} minutes")
         col6.metric("Machines Requiring Attention", open_machines)
+
+        st.subheader("Attention Required")
+
+        alerts = []
+
+        if not orders_df.empty:
+            delayed_orders = orders_df[
+                orders_df["status"].astype(str).str.lower() == "delayed"
+            ]
+
+            for _, row in delayed_orders.iterrows():
+                alerts.append(
+                    {
+                        "status": "Delayed",
+                        "severity": "High",
+                        "area": "Orders",
+                        "message": (
+                            f"{row.get('customer_name', 'Customer')} "
+                            "order is delayed"
+                        ),
+                    }
+                )
+
+        if not inventory_df.empty and not materials_df.empty:
+            inventory_check = inventory_df.merge(
+                materials_df[["id", "name", "reorder_level"]],
+                left_on="material_id",
+                right_on="id",
+                how="left",
+            )
+
+            inventory_check["quantity"] = pd.to_numeric(
+                inventory_check["quantity"],
+                errors="coerce",
+            ).fillna(0)
+            inventory_check["reorder_level"] = pd.to_numeric(
+                inventory_check["reorder_level"],
+                errors="coerce",
+            ).fillna(0)
+
+            low_stock = inventory_check[
+                inventory_check["quantity"] <= inventory_check["reorder_level"]
+            ]
+
+            for _, row in low_stock.iterrows():
+                alerts.append(
+                    {
+                        "status": "Low Stock",
+                        "severity": "High",
+                        "area": "Inventory",
+                        "message": (
+                            f"{row.get('name', 'Material')} "
+                            "is below reorder level"
+                        ),
+                    }
+                )
+
+        if not machines_df.empty:
+            machines_needing_attention = machines_df[
+                machines_df["status"].astype(str).str.lower() != "operational"
+            ]
+
+            for _, row in machines_needing_attention.iterrows():
+                alerts.append(
+                    {
+                        "status": "Attention",
+                        "severity": "High",
+                        "area": "Machines",
+                        "message": (
+                            f"{row.get('name', 'Machine')} "
+                            f"status: {row.get('status', 'Unknown')}"
+                        ),
+                    }
+                )
+
+        if not safety_df.empty:
+            open_incidents = safety_df[
+                safety_df["status"].astype(str).str.lower() == "open"
+            ]
+
+            for _, row in open_incidents.iterrows():
+                alerts.append(
+                    {
+                        "status": "Open",
+                        "severity": row.get("severity", "Medium"),
+                        "area": "Safety",
+                        "message": row.get(
+                            "description",
+                            "Open safety incident",
+                        ),
+                    }
+                )
+
+        if alerts:
+            alerts_display = pd.DataFrame(alerts)
+            render_manager_table(
+                alerts_display,
+                ["status", "severity", "area", "message"],
+            )
+        else:
+            st.success("No urgent operational issues detected.")
 
         st.subheader("Production Performance")
 
