@@ -43,11 +43,21 @@ if st.sidebar.button("Log out"):
 
 st.title("FactoryOps")
 
-# Temporary Step 1.3 connection check. Replace with the manager dashboard flow
-# after authentication and RLS policies are added in the next step.
 try:
-    result = supabase.table("departments").select("*").execute()
-    st.success("Supabase connected successfully.")
-    st.write(result.data)
+    departments_response = (
+        supabase
+        .table("departments")
+        .select("*")
+        .execute()
+    )
+
+    departments = departments_response.data
+
+    st.subheader("Factory Departments")
+
+    if departments:
+        st.dataframe(departments, use_container_width=True)
+    else:
+        st.info("No departments have been added yet.")
 except Exception as error:
-    st.error(f"Supabase connection failed: {error}")
+    st.error(f"Unable to read departments: {error}")
