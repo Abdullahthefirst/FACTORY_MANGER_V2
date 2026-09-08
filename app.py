@@ -15,6 +15,16 @@ SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+if "access_token" in st.session_state:
+    try:
+        supabase.auth.set_session(
+            st.session_state["access_token"],
+            st.session_state["refresh_token"],
+        )
+    except Exception:
+        st.session_state.clear()
+        st.rerun()
+
 if "user" not in st.session_state:
     st.session_state.user = None
 
@@ -30,16 +40,20 @@ if st.session_state.user is None:
                 {"email": email, "password": password}
             )
             st.session_state.user = response.user
+            st.session_state.access_token = response.session.access_token
+            st.session_state.refresh_token = response.session.refresh_token
             st.success("Login successful.")
             st.rerun()
-        except Exception:
-            st.error("Incorrect email or password.")
+        except Exception as error:
+            st.error(f"Login failed: {error}")
 
     st.stop()
 
 if st.sidebar.button("Log out"):
     supabase.auth.sign_out()
     st.session_state.user = None
+    st.session_state.pop("access_token", None)
+    st.session_state.pop("refresh_token", None)
     st.rerun()
 
 def load_table(table_name: str) -> pd.DataFrame:
