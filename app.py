@@ -1111,8 +1111,60 @@ try:
         render_manager_table(load_table("shipments"), [])
 
     elif page == "💰 Costs":
-        st.title("Costs and Profitability")
-        render_manager_table(load_table("operating_costs"), [])
+        st.title("Costs & Spending")
+        st.caption("Monitor operating costs by category and date.")
+
+        costs_df = load_table("operating_costs")
+
+        if costs_df.empty:
+            st.info("No cost records available.")
+        else:
+            costs_df["amount"] = pd.to_numeric(
+                costs_df["amount"],
+                errors="coerce",
+            ).fillna(0)
+            costs_df["cost_date"] = pd.to_datetime(
+                costs_df["cost_date"],
+                errors="coerce",
+            )
+
+            total_cost = costs_df["amount"].sum()
+            average_cost = costs_df["amount"].mean()
+            largest_category = (
+                costs_df
+                .groupby("category")["amount"]
+                .sum()
+                .sort_values(ascending=False)
+            )
+            top_category = (
+                largest_category.index[0]
+                if not largest_category.empty
+                else "None"
+            )
+
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Total Operating Cost", f"{total_cost:,.0f}")
+            col2.metric("Average Cost Entry", f"{average_cost:,.0f}")
+            col3.metric("Highest Cost Category", top_category)
+
+            st.subheader("Cost by Category")
+            category_summary = (
+                costs_df
+                .groupby("category", as_index=False)["amount"]
+                .sum()
+                .sort_values("amount", ascending=False)
+            )
+            st.bar_chart(
+                category_summary.set_index("category"),
+                height=320,
+            )
+
+            st.subheader("Cost Records")
+            costs_df = costs_df.sort_values(by="amount", ascending=False)
+            render_manager_table(
+                costs_df,
+                ["category", "amount", "cost_date", "description"],
+            )
 
     elif page == "🛡️ Safety & Risk":
         st.title("Safety and Compliance")
