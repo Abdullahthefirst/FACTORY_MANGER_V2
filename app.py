@@ -141,6 +141,8 @@ def manager_view(df: pd.DataFrame) -> pd.DataFrame:
         "shift_id",
         "order_id",
         "production_record_id",
+        "id_material",
+        "supplier_id_lookup",
     ]
     return df.drop(columns=hidden_columns, errors="ignore")
 
@@ -173,6 +175,7 @@ def style_status(value: object) -> str:
         "received",
         "normal",
         "low",
+        "healthy",
     ]:
         return "color: #15803d; font-weight: 600"
 
@@ -212,7 +215,7 @@ def render_manager_table(
     display_df = arrange_columns(display_df, preferred_columns)
     styled_df = display_df.style
 
-    for column in ["status", "priority", "severity", "risk"]:
+    for column in ["status", "priority", "severity", "risk", "stock_status"]:
         if column in display_df.columns:
             styled_df = styled_df.map(style_status, subset=[column])
 
@@ -659,12 +662,115 @@ try:
             )
 
     elif page == "📦 Inventory & Supply":
-        st.title("Inventory and Supply")
-        st.subheader("Inventory")
-        render_manager_table(load_table("inventory"), [])
+        st.title("Inventory & Supply")
+        st.caption("Monitor stock levels, reorder risks, and supplier deliveries.")
+
+        inventory_df = load_table("inventory")
+        materials_df = load_table("materials")
+        suppliers_df = load_table("suppliers")
+        purchase_orders_df = load_table("purchase_orders")
+
+        if inventory_df.empty:
+            st.info("No inventory records available.")
+        else:
+            material_columns = [
+                "id",
+                "name",
+                "material_code",
+                "unit",
+                "reorder_level",
+                "supplier_id",
+            ]
+            inventory_view = inventory_df.merge(
+                materials_df[material_columns],
+                left_on="material_id",
+                right_on="id",
+                how="left",
+                suffixes=("", "_material"),
+            )
+
+            supplier_columns = ["id", "name"]
+            inventory_view = inventory_view.merge(
+                suppliers_df[supplier_columns].rename(
+                    columns={
+                        "id": "supplier_id_lookup",
+                        "name": "supplier_name",
+                    }
+                ),
+                left_on="supplier_id",
+                right_on="supplier_id_lookup",
+                how="left",
+            )
+            inventory_view = inventory_view.rename(columns={"name": "material_name"})
+
+            inventory_view["quantity"] = pd.to_numeric(
+                inventory_view["quantity"],
+                errors="coerce",
+            ).fillna(0)
+            inventory_view["reorder_level"] = pd.to_numeric(
+                inventory_view["reorder_level"],
+                errors="coerce",
+            ).fillna(0)
+            inventory_view["reorder_gap"] = (
+                inventory_view["reorder_level"] - inventory_view["quantity"]
+            ).clip(lower=0)
+            inventory_view["stock_status"] = inventory_view.apply(
+                lambda row: (
+                    "Critical"
+                    if row["quantity"] == 0
+                    else "Low Stock"
+                    if row["quantity"] <= row["reorder_level"]
+                    else "Healthy"
+                ),
+                axis=1,
+            )
+
+            total_materials = len(inventory_view)
+            low_stock_count = len(
+                inventory_view[
+                    inventory_view["stock_status"].isin(["Critical", "Low Stock"])
+                ]
+            )
+            healthy_count = len(
+                inventory_view[inventory_view["stock_status"] == "Healthy"]
+            )
+
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Materials Tracked", total_materials)
+            col2.metric("Low-Stock Materials", low_stock_count)
+            col3.metric("Healthy Materials", healthy_count)
+
+            st.subheader("Inventory Status")
+            render_manager_table(
+                inventory_view,
+                [
+                    "stock_status",
+                    "material_code",
+                    "material_name",
+                    "quantity",
+                    "unit",
+                    "reorder_level",
+                    "reorder_gap",
+                    "supplier_name",
+                    "warehouse_location",
+                ],
+            )
 
         st.subheader("Purchase Orders")
-        render_manager_table(load_table("purchase_orders"), [])
+
+        if purchase_orders_df.empty:
+            st.info("No purchase orders available.")
+        else:
+            render_manager_table(
+                purchase_orders_df,
+                [
+                    "status",
+                    "purchase_order_code",
+                    "expected_date",
+                    "ordered_quantity",
+                    "received_quantity",
+                ],
+            )
 
     elif page == "⚙️ Machines & Maintenance":
         st.title("Machines and Maintenance")
