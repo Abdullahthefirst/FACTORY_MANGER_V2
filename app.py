@@ -127,6 +127,31 @@ def load_table(table_name: str) -> pd.DataFrame:
     return pd.DataFrame(response.data)
 
 
+def add_lookup_name(
+    df: pd.DataFrame,
+    lookup_df: pd.DataFrame,
+    source_column: str,
+    output_column: str,
+    lookup_name_column: str = "name",
+) -> pd.DataFrame:
+    """Attach a readable lookup name while retaining the internal UUID key."""
+    if df.empty or lookup_df.empty:
+        return df
+
+    lookup = lookup_df[["id", lookup_name_column]].rename(
+        columns={
+            "id": f"{source_column}_lookup",
+            lookup_name_column: output_column,
+        }
+    )
+    return df.merge(
+        lookup,
+        left_on=source_column,
+        right_on=f"{source_column}_lookup",
+        how="left",
+    )
+
+
 def manager_view(df: pd.DataFrame) -> pd.DataFrame:
     """Hide database identifiers from manager-facing tables."""
     hidden_columns = [
@@ -146,7 +171,14 @@ def manager_view(df: pd.DataFrame) -> pd.DataFrame:
         "id_x",
         "id_y",
     ]
-    return df.drop(columns=hidden_columns, errors="ignore")
+    lookup_columns = [
+        column for column in df.columns
+        if column.endswith("_lookup")
+    ]
+    return df.drop(
+        columns=hidden_columns + lookup_columns,
+        errors="ignore",
+    )
 
 
 def arrange_columns(
@@ -347,6 +379,13 @@ try:
         st.caption("Monitor delivery commitments and identify orders at risk.")
 
         orders_df = load_table("customer_orders")
+        products_df = load_table("products")
+        orders_df = add_lookup_name(
+            orders_df,
+            products_df,
+            "product_id",
+            "product_name",
+        )
 
         if orders_df.empty:
             st.info("No customer orders available.")
@@ -426,6 +465,7 @@ try:
                     "order_code",
                     "due_date",
                     "customer_name",
+                    "product_name",
                     "quantity",
                     "days_remaining",
                 ],
@@ -434,6 +474,27 @@ try:
     elif page == "🏭 Production":
         st.title("Production Monitoring")
         production_df = load_table("production_records")
+        lines_df = load_table("production_lines")
+        products_df = load_table("products")
+        shifts_df = load_table("shifts")
+        production_df = add_lookup_name(
+            production_df,
+            lines_df,
+            "production_line_id",
+            "production_line_name",
+        )
+        production_df = add_lookup_name(
+            production_df,
+            products_df,
+            "product_id",
+            "product_name",
+        )
+        production_df = add_lookup_name(
+            production_df,
+            shifts_df,
+            "shift_id",
+            "shift_name",
+        )
 
         if production_df.empty:
             st.info("No production records available.")
@@ -570,6 +631,9 @@ try:
                     "status",
                     "production_code",
                     "production_date",
+                    "production_line_name",
+                    "product_name",
+                    "shift_name",
                     "downtime_reason",
                     "planned_quantity",
                     "actual_quantity",
@@ -586,6 +650,18 @@ try:
         materials_df = load_table("materials")
         suppliers_df = load_table("suppliers")
         purchase_orders_df = load_table("purchase_orders")
+        purchase_orders_df = add_lookup_name(
+            purchase_orders_df,
+            materials_df,
+            "material_id",
+            "material_name",
+        )
+        purchase_orders_df = add_lookup_name(
+            purchase_orders_df,
+            suppliers_df,
+            "supplier_id",
+            "supplier_name",
+        )
 
         if inventory_df.empty:
             st.info("No inventory records available.")
@@ -698,9 +774,11 @@ try:
                 [
                     "status",
                     "purchase_order_code",
-                    "expected_date",
+                    "material_name",
+                    "supplier_name",
                     "ordered_quantity",
                     "received_quantity",
+                    "expected_date",
                 ],
             )
 
@@ -710,6 +788,12 @@ try:
 
         machines_df = load_table("machines")
         maintenance_df = load_table("maintenance_records")
+        maintenance_df = add_lookup_name(
+            maintenance_df,
+            machines_df,
+            "machine_id",
+            "machine_name",
+        )
 
         if machines_df.empty:
             st.info("No machine records available.")
@@ -822,9 +906,10 @@ try:
                     maintenance_df,
                     [
                         "status",
+                        "maintenance_code",
+                        "machine_name",
                         "issue_type",
                         "downtime_minutes",
-                        "description",
                         "reported_at",
                         "resolved_at",
                     ],
