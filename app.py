@@ -212,13 +212,8 @@ def style_status(value: object) -> str:
         "approved",
         "present",
         "received",
-        "normal",
-        "low",
         "healthy",
-        "resolved",
-        "closed",
-        "on track",
-        "clear",
+        "normal",
     ]:
         return "color: #15803d; font-weight: 600"
 
@@ -227,11 +222,8 @@ def style_status(value: object) -> str:
         "in progress",
         "ordered",
         "planned",
+        "attention",
         "medium",
-        "at risk",
-        "late",
-        "investigating",
-        "below target",
     ]:
         return "color: #b45309; font-weight: 600"
 
@@ -241,14 +233,9 @@ def style_status(value: object) -> str:
         "maintenance",
         "absent",
         "rejected",
-        "low stock",
-        "attention",
-        "high",
-        "urgent",
         "critical",
-        "leave",
-        "attention required",
-        "open incidents",
+        "high",
+        "low stock",
     ]:
         return "color: #dc2626; font-weight: 600"
 
@@ -259,17 +246,144 @@ def render_manager_table(
     df: pd.DataFrame,
     preferred_columns: list[str],
 ) -> None:
-    """Render a manager-first table with status-aware styling."""
-    display_df = manager_view(df)
+    """Render a formatted, manager-first table."""
+    display_df = manager_view(df).copy()
     display_df = arrange_columns(display_df, preferred_columns)
+
+    date_columns = [
+        "production_date",
+        "due_date",
+        "order_date",
+        "expected_date",
+        "cost_date",
+        "incident_date",
+        "attendance_date",
+    ]
+    for column in date_columns:
+        if column in display_df.columns:
+            display_df[column] = pd.to_datetime(
+                display_df[column],
+                errors="coerce",
+            )
+
+    datetime_columns = ["reported_at", "resolved_at", "created_at"]
+    for column in datetime_columns:
+        if column in display_df.columns:
+            display_df[column] = pd.to_datetime(
+                display_df[column],
+                errors="coerce",
+            )
+
+    numeric_columns = [
+        "quantity",
+        "planned_quantity",
+        "actual_quantity",
+        "rejected_quantity",
+        "downtime_minutes",
+        "total_downtime",
+        "reorder_level",
+        "reorder_gap",
+        "ordered_quantity",
+        "received_quantity",
+        "amount",
+        "overtime_hours",
+        "defect_rate",
+    ]
+    for column in numeric_columns:
+        if column in display_df.columns:
+            display_df[column] = pd.to_numeric(
+                display_df[column],
+                errors="coerce",
+            )
+
+    column_config = {}
+    readable_names = {
+        "status": "Status",
+        "priority": "Priority",
+        "severity": "Severity",
+        "production_code": "Production Code",
+        "production_date": "Production Date",
+        "production_line_name": "Production Line",
+        "product_name": "Product",
+        "shift_name": "Shift",
+        "planned_quantity": "Planned Quantity",
+        "actual_quantity": "Actual Quantity",
+        "rejected_quantity": "Rejected Quantity",
+        "downtime_minutes": "Downtime",
+        "stock_status": "Stock Status",
+        "material_code": "Material Code",
+        "material_name": "Material",
+        "reorder_level": "Reorder Level",
+        "reorder_gap": "Reorder Gap",
+        "supplier_name": "Supplier",
+        "purchase_order_code": "Purchase Order",
+        "ordered_quantity": "Ordered Quantity",
+        "received_quantity": "Received Quantity",
+        "expected_date": "Expected Date",
+        "machine_code": "Machine Code",
+        "machine_name": "Machine",
+        "total_downtime": "Total Downtime",
+        "open_issues": "Open Issues",
+        "maintenance_events": "Maintenance Events",
+        "maintenance_code": "Maintenance Code",
+        "issue_type": "Issue Type",
+        "defect_type": "Defect Type",
+        "defect_rate": "Defect Rate",
+        "inspection_date": "Inspection Date",
+        "employee_code": "Employee Code",
+        "full_name": "Employee",
+        "attendance_date": "Attendance Date",
+        "overtime_hours": "Overtime Hours",
+        "incident_code": "Incident Code",
+        "incident_date": "Incident Date",
+        "incident_type": "Incident Type",
+        "cost_date": "Cost Date",
+        "category": "Category",
+        "amount": "Amount",
+        "description": "Description",
+    }
+
+    for column, title in readable_names.items():
+        if column in display_df.columns:
+            column_config[column] = st.column_config.TextColumn(
+                title,
+                width="medium",
+            )
+
+    for column in date_columns:
+        if column in display_df.columns:
+            column_config[column] = st.column_config.DateColumn(
+                readable_names.get(column, column),
+                format="YYYY-MM-DD",
+            )
+
+    for column in datetime_columns:
+        if column in display_df.columns:
+            column_config[column] = st.column_config.DatetimeColumn(
+                readable_names.get(column, column),
+                format="YYYY-MM-DD HH:mm",
+            )
+
+    for column in numeric_columns:
+        if column in display_df.columns:
+            column_config[column] = st.column_config.NumberColumn(
+                readable_names.get(column, column),
+                format="%,.0f",
+            )
+
     styled_df = display_df.style
 
-    styled_columns = {"status", "priority", "severity", "risk", "stock_status"}
-    for column in display_df.columns:
-        if column.lower() in styled_columns:
+    for column in ["status", "priority", "severity", "stock_status"]:
+        if column in display_df.columns:
             styled_df = styled_df.map(style_status, subset=[column])
 
-    st.dataframe(styled_df, use_container_width=True, hide_index=True)
+    st.dataframe(
+        styled_df,
+        column_config=column_config,
+        use_container_width=True,
+        hide_index=True,
+        height=400,
+    )
 
 
 try:
