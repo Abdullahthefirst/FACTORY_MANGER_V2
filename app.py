@@ -189,17 +189,22 @@ def manager_view(df: pd.DataFrame) -> pd.DataFrame:
 def arrange_columns(
     df: pd.DataFrame,
     preferred_columns: list[str],
+    include_remaining: bool = False,
 ) -> pd.DataFrame:
-    """Move manager decision fields to the start of a dataframe."""
-    preferred = [
+    """Select manager-first fields, optionally followed by all others."""
+    selected = [
         column for column in preferred_columns
         if column in df.columns
     ]
+
+    if not include_remaining:
+        return df[selected]
+
     remaining = [
         column for column in df.columns
-        if column not in preferred
+        if column not in selected
     ]
-    return df[preferred + remaining]
+    return df[selected + remaining]
 
 
 def style_status(value: object) -> str:
@@ -245,10 +250,9 @@ def style_status(value: object) -> str:
 def render_manager_table(
     df: pd.DataFrame,
     preferred_columns: list[str],
+    show_all_fields: bool = True,
 ) -> None:
-    """Render a manager table with direct display formatting."""
-    display_df = manager_view(df).copy()
-    display_df = arrange_columns(display_df, preferred_columns)
+    """Render a manager-first table with an optional full-field view."""
 
     readable_names = {
         "status": "Status",
@@ -307,13 +311,6 @@ def render_manager_table(
         "incident_date",
         "attendance_date",
     ]
-    for column in date_columns:
-        if column in display_df.columns:
-            display_df[column] = pd.to_datetime(
-                display_df[column],
-                errors="coerce",
-            ).dt.strftime("%Y-%m-%d")
-
     integer_columns = [
         "quantity",
         "planned_quantity",
@@ -328,27 +325,58 @@ def render_manager_table(
         "open_issues",
         "maintenance_events",
     ]
-    for column in integer_columns:
-        if column in display_df.columns:
-            display_df[column] = pd.to_numeric(
-                display_df[column],
-                errors="coerce",
-            ).fillna(0).map(lambda value: f"{value:,.0f}")
 
-    display_df = display_df.rename(columns=readable_names)
+    def format_for_display(table_df: pd.DataFrame):
+        table_df = table_df.copy()
 
-    styled_df = display_df.style
+        for column in date_columns:
+            if column in table_df.columns:
+                table_df[column] = pd.to_datetime(
+                    table_df[column],
+                    errors="coerce",
+                ).dt.strftime("%Y-%m-%d")
 
-    for column in ["Status", "Priority", "Severity", "Stock Status"]:
-        if column in display_df.columns:
-            styled_df = styled_df.map(style_status, subset=[column])
+        for column in integer_columns:
+            if column in table_df.columns:
+                table_df[column] = pd.to_numeric(
+                    table_df[column],
+                    errors="coerce",
+                ).fillna(0).map(lambda value: f"{value:,.0f}")
 
+        table_df = table_df.rename(columns=readable_names)
+        styled_df = table_df.style
+
+        for column in ["Status", "Priority", "Severity", "Stock Status"]:
+            if column in table_df.columns:
+                styled_df = styled_df.map(style_status, subset=[column])
+
+        return styled_df
+
+    manager_df = arrange_columns(
+        manager_view(df).copy(),
+        preferred_columns,
+        include_remaining=False,
+    )
     st.dataframe(
-        styled_df,
+        format_for_display(manager_df),
         use_container_width=True,
         hide_index=True,
         height=400,
     )
+
+    if show_all_fields:
+        with st.expander("View all fields"):
+            all_fields_df = arrange_columns(
+                manager_view(df).copy(),
+                preferred_columns,
+                include_remaining=True,
+            )
+            st.dataframe(
+                format_for_display(all_fields_df),
+                use_container_width=True,
+                hide_index=True,
+                height=400,
+            )
 
 
 try:
@@ -1190,7 +1218,17 @@ try:
 
     elif page == "🚚 Logistics":
         st.title("Logistics")
-        render_manager_table(load_table("shipments"), [])
+        render_manager_table(
+            load_table("shipments"),
+            [
+                "status",
+                "shipment_code",
+                "shipment_date",
+                "delivery_date",
+                "customer_name",
+                "quantity",
+            ],
+        )
 
     elif page == "💰 Costs":
         st.title("Costs & Spending")
