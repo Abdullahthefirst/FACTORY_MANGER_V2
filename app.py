@@ -176,7 +176,14 @@ def style_status(value: object) -> str:
     ]:
         return "color: #15803d; font-weight: 600"
 
-    if value in ["pending", "in progress", "ordered", "planned", "medium"]:
+    if value in [
+        "pending",
+        "in progress",
+        "ordered",
+        "planned",
+        "medium",
+        "at risk",
+    ]:
         return "color: #b45309; font-weight: 600"
 
     if value in [
@@ -205,7 +212,7 @@ def render_manager_table(
     display_df = arrange_columns(display_df, preferred_columns)
     styled_df = display_df.style
 
-    for column in ["status", "priority", "severity"]:
+    for column in ["status", "priority", "severity", "risk"]:
         if column in display_df.columns:
             styled_df = styled_df.map(style_status, subset=[column])
 
@@ -416,26 +423,91 @@ try:
                 st.success("All machines are operational.")
 
     elif page == "📦 Orders & Demand":
-        st.title("Orders and Demand")
+        st.title("Orders & Demand")
+        st.caption("Monitor delivery commitments and identify orders at risk.")
+
         orders_df = load_table("customer_orders")
 
         if orders_df.empty:
             st.info("No customer orders available.")
         else:
-            st.metric("Total Orders", len(orders_df))
-            delayed_orders = orders_df[
-                orders_df["status"].str.lower() == "delayed"
-            ]
-            st.metric("Delayed Orders", len(delayed_orders))
+            orders_df["due_date"] = pd.to_datetime(
+                orders_df["due_date"],
+                errors="coerce",
+            )
+
+            today = pd.Timestamp.now().normalize()
+            orders_df["days_remaining"] = (
+                orders_df["due_date"] - today
+            ).dt.days
+
+            def calculate_risk(row: pd.Series) -> str:
+                status = str(row.get("status", "")).lower()
+                days = row.get("days_remaining")
+
+                if status == "delayed":
+                    return "Critical"
+
+                if pd.notna(days) and days < 0:
+                    return "Critical"
+
+                if pd.notna(days) and days <= 3:
+                    return "At Risk"
+
+                if str(row.get("priority", "")).lower() == "urgent":
+                    return "At Risk"
+
+                return "Normal"
+
+            orders_df["risk"] = orders_df.apply(calculate_risk, axis=1)
+
+            priority_options = ["All"] + sorted(
+                orders_df["priority"].dropna().astype(str).unique().tolist()
+            )
+            selected_priority = st.selectbox("Priority", priority_options)
+
+            filtered_orders = orders_df.copy()
+
+            if selected_priority != "All":
+                filtered_orders = filtered_orders[
+                    filtered_orders["priority"].astype(str) == selected_priority
+                ]
+
+            total_orders = len(filtered_orders)
+            at_risk_orders = len(
+                filtered_orders[
+                    filtered_orders["risk"].isin(["Critical", "At Risk"])
+                ]
+            )
+            delayed_orders = len(
+                filtered_orders[
+                    filtered_orders["status"].astype(str).str.lower()
+                    == "delayed"
+                ]
+            )
+            total_quantity = pd.to_numeric(
+                filtered_orders["quantity"],
+                errors="coerce",
+            ).fillna(0).sum()
+
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Total Orders", total_orders)
+            col2.metric("Orders at Risk", at_risk_orders)
+            col3.metric("Delayed Orders", delayed_orders)
+            col4.metric("Committed Quantity", f"{total_quantity:,.0f}")
+
+            st.subheader("Order Risk Monitor")
             render_manager_table(
-                orders_df,
+                filtered_orders,
                 [
+                    "risk",
                     "status",
                     "priority",
                     "order_code",
                     "due_date",
                     "customer_name",
                     "quantity",
+                    "days_remaining",
                 ],
             )
 
