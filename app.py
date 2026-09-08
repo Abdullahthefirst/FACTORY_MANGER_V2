@@ -243,7 +243,9 @@ try:
             col4.metric("Downtime", f"{downtime:,.0f} min")
 
             chart_data = (
-                filtered_df
+                filtered_df[
+                    ["production_date", "planned_quantity", "actual_quantity"]
+                ]
                 .groupby("production_date", as_index=False)[
                     ["planned_quantity", "actual_quantity"]
                 ]
@@ -254,47 +256,92 @@ try:
                 chart_data["production_date"]
             )
 
-            chart_data = chart_data.melt(
-                id_vars=["production_date"],
-                value_vars=["planned_quantity", "actual_quantity"],
-                var_name="Production Type",
-                value_name="Quantity",
-            )
-
             point_count = chart_data["production_date"].nunique()
 
-            if point_count <= 7:
-                chart_height = 300
-            elif point_count <= 31:
-                chart_height = 400
-            elif point_count <= 90:
-                chart_height = 480
-            else:
-                chart_height = 560
-
             if point_count == 1:
+                actual_value = chart_data["actual_quantity"].iloc[0]
+                planned_value = chart_data["planned_quantity"].iloc[0]
+                selected_date = chart_data["production_date"].iloc[0]
+
+                slope_data = pd.DataFrame(
+                    {
+                        "Stage": [
+                            "Origin",
+                            "Production",
+                            "Origin",
+                            "Production",
+                        ],
+                        "Metric": [
+                            "Actual Production",
+                            "Actual Production",
+                            "Planned Production",
+                            "Planned Production",
+                        ],
+                        "Quantity": [0, actual_value, 0, planned_value],
+                    }
+                )
+
                 production_chart = (
-                    alt.Chart(chart_data)
-                    .mark_bar()
+                    alt.Chart(slope_data)
+                    .mark_line(point=True, strokeWidth=4)
                     .encode(
-                        x=alt.X("Production Type:N", title=None),
+                        x=alt.X(
+                            "Stage:N",
+                            sort=["Origin", "Production"],
+                            title=None,
+                        ),
                         y=alt.Y(
                             "Quantity:Q",
                             title="Units",
                             scale=alt.Scale(zero=True),
                         ),
-                        color=alt.Color("Production Type:N", title="Metric"),
-                        tooltip=["Production Type:N", "Quantity:Q"],
+                        color=alt.Color(
+                            "Metric:N",
+                            scale=alt.Scale(
+                                domain=["Actual Production", "Planned Production"],
+                                range=["#1769aa", "#8ecae6"],
+                            ),
+                            title=None,
+                        ),
+                        tooltip=[
+                            alt.Tooltip("Metric:N", title="Metric"),
+                            alt.Tooltip(
+                                "Quantity:Q",
+                                title="Units",
+                                format=",.0f",
+                            ),
+                        ],
+                    )
+                    .properties(
+                        height=360,
+                        title=(
+                            "Production on "
+                            f"{selected_date.strftime('%Y-%m-%d')}"
+                        ),
                     )
                 )
             else:
+                chart_data = chart_data.melt(
+                    id_vars=["production_date"],
+                    value_vars=["planned_quantity", "actual_quantity"],
+                    var_name="Metric",
+                    value_name="Quantity",
+                )
+
+                chart_data["Metric"] = chart_data["Metric"].replace(
+                    {
+                        "actual_quantity": "Actual Production",
+                        "planned_quantity": "Planned Production",
+                    }
+                )
+
                 production_chart = (
                     alt.Chart(chart_data)
-                    .mark_line(point=True)
+                    .mark_line(point=True, strokeWidth=3)
                     .encode(
                         x=alt.X(
                             "production_date:T",
-                            title="Production Date",
+                            title="Date",
                             axis=alt.Axis(format="%b %d", labelAngle=-45),
                         ),
                         y=alt.Y(
@@ -302,14 +349,14 @@ try:
                             title="Units",
                             scale=alt.Scale(zero=True),
                         ),
-                        color=alt.Color("Production Type:N", title="Metric"),
+                        color=alt.Color("Metric:N", title=None),
                         tooltip=[
                             alt.Tooltip(
                                 "production_date:T",
                                 title="Date",
                                 format="%Y-%m-%d",
                             ),
-                            alt.Tooltip("Production Type:N", title="Type"),
+                            alt.Tooltip("Metric:N", title="Metric"),
                             alt.Tooltip(
                                 "Quantity:Q",
                                 title="Quantity",
@@ -317,13 +364,13 @@ try:
                             ),
                         ],
                     )
+                    .properties(height=360, title="Planned vs Actual Production")
+                    .interactive()
                 )
 
-            st.subheader("Planned vs Actual Production")
+            st.subheader("Production Performance")
             st.altair_chart(
-                production_chart
-                .properties(height=chart_height)
-                .interactive(),
+                production_chart,
                 use_container_width=True,
             )
 
