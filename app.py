@@ -741,6 +741,21 @@ try:
             col3.metric("Healthy Materials", healthy_count)
 
             st.subheader("Inventory Status")
+
+            stock_priority = {
+                "Critical": 0,
+                "Low Stock": 1,
+                "Healthy": 2,
+            }
+            inventory_view["_status_priority"] = (
+                inventory_view["stock_status"].map(stock_priority).fillna(99)
+            )
+            inventory_view = (
+                inventory_view
+                .sort_values(by=["_status_priority", "material_name"])
+                .drop(columns=["_status_priority"])
+            )
+
             render_manager_table(
                 inventory_view,
                 [
