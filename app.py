@@ -143,6 +143,8 @@ def manager_view(df: pd.DataFrame) -> pd.DataFrame:
         "production_record_id",
         "id_material",
         "supplier_id_lookup",
+        "id_x",
+        "id_y",
     ]
     return df.drop(columns=hidden_columns, errors="ignore")
 
@@ -186,6 +188,7 @@ def style_status(value: object) -> str:
         "planned",
         "medium",
         "at risk",
+        "late",
     ]:
         return "color: #b45309; font-weight: 600"
 
@@ -200,6 +203,7 @@ def style_status(value: object) -> str:
         "high",
         "urgent",
         "critical",
+        "leave",
     ]:
         return "color: #dc2626; font-weight: 600"
 
@@ -1013,48 +1017,94 @@ try:
 
     elif page == "👥 Workforce":
         st.title("Workforce Management")
+        st.caption("Monitor attendance, staffing availability, and overtime.")
 
         employees_df = load_table("employees")
         attendance_df = load_table("employee_attendance")
 
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Total Employees", len(employees_df))
-
-        if not attendance_df.empty:
-            present_count = len(
-                attendance_df[attendance_df["status"].str.lower() == "present"]
-            )
-            absent_count = len(
-                attendance_df[attendance_df["status"].str.lower() == "absent"]
-            )
-        else:
-            present_count = 0
-            absent_count = 0
-
-        col2.metric("Present Today", present_count)
-        col3.metric("Absent Today", absent_count)
-
-        st.subheader("Employees")
-
         if employees_df.empty:
-            st.info("No employees available.")
+            st.info("No employee records available.")
         else:
-            render_manager_table(employees_df, [])
+            if attendance_df.empty:
+                st.warning(
+                    "Employee records exist, but no attendance has been entered."
+                )
+                render_manager_table(
+                    employees_df,
+                    [
+                        "active",
+                        "employee_code",
+                        "full_name",
+                        "role",
+                        "skill_level",
+                    ],
+                )
+            else:
+                attendance_view = attendance_df.merge(
+                    employees_df[
+                        [
+                            "id",
+                            "employee_code",
+                            "full_name",
+                            "role",
+                            "skill_level",
+                            "department_id",
+                        ]
+                    ],
+                    left_on="employee_id",
+                    right_on="id",
+                    how="left",
+                )
 
-        st.subheader("Attendance")
+                attendance_view["overtime_hours"] = pd.to_numeric(
+                    attendance_view["overtime_hours"],
+                    errors="coerce",
+                ).fillna(0)
 
-        if attendance_df.empty:
-            st.info("No attendance records available.")
-        else:
-            render_manager_table(
-                attendance_df,
-                [
-                    "status",
-                    "attendance_date",
-                    "shift_id",
-                    "overtime_hours",
-                ],
-            )
+                status_order = {
+                    "absent": 0,
+                    "leave": 1,
+                    "late": 2,
+                    "present": 3,
+                }
+                attendance_view["_status_order"] = (
+                    attendance_view["status"]
+                    .astype(str)
+                    .str.lower()
+                    .map(status_order)
+                    .fillna(99)
+                )
+                attendance_view = (
+                    attendance_view
+                    .sort_values(by=["_status_order", "full_name"])
+                    .drop(columns=["_status_order"])
+                )
+
+                attendance_status = attendance_view["status"].astype(str).str.lower()
+                present_count = (attendance_status == "present").sum()
+                absent_count = (attendance_status == "absent").sum()
+                leave_count = (attendance_status == "leave").sum()
+                total_overtime = attendance_view["overtime_hours"].sum()
+
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("Employees", len(employees_df))
+                col2.metric("Present", present_count)
+                col3.metric("Absent", absent_count)
+                col4.metric("Overtime Hours", f"{total_overtime:,.1f}")
+
+                st.subheader("Attendance Overview")
+                render_manager_table(
+                    attendance_view,
+                    [
+                        "status",
+                        "employee_code",
+                        "full_name",
+                        "role",
+                        "attendance_date",
+                        "shift_id",
+                        "overtime_hours",
+                    ],
+                )
 
     elif page == "🚚 Logistics":
         st.title("Logistics")
