@@ -1,0 +1,1 @@
+-- Supabase row-level security policy placeholder.

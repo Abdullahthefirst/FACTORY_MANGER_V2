@@ -1,0 +1,1 @@
+"""Database input validation rules."""
