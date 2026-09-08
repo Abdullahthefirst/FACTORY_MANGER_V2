@@ -1,5 +1,6 @@
 """Streamlit application entry point."""
 
+import pandas as pd
 import streamlit as st
 from supabase import create_client
 
@@ -41,23 +42,99 @@ if st.sidebar.button("Log out"):
     st.session_state.user = None
     st.rerun()
 
-st.title("FactoryOps")
+def load_table(table_name: str) -> pd.DataFrame:
+    """Load a Supabase table into a DataFrame for the dashboard."""
+    response = supabase.table(table_name).select("*").execute()
+    return pd.DataFrame(response.data)
+
 
 try:
-    departments_response = (
-        supabase
-        .table("departments")
-        .select("*")
-        .execute()
+    production_df = load_table("production_records")
+    orders_df = load_table("customer_orders")
+    inventory_df = load_table("inventory")
+    machines_df = load_table("machines")
+    alerts_df = load_table("factory_alerts")
+
+    st.title("Factory Manager Dashboard")
+
+    total_production = (
+        production_df["actual_quantity"].sum()
+        if not production_df.empty else 0
     )
 
-    departments = departments_response.data
+    planned_production = (
+        production_df["planned_quantity"].sum()
+        if not production_df.empty else 0
+    )
 
-    st.subheader("Factory Departments")
+    rejected_units = (
+        production_df["rejected_quantity"].sum()
+        if not production_df.empty else 0
+    )
 
-    if departments:
-        st.dataframe(departments, use_container_width=True)
+    downtime_minutes = (
+        production_df["downtime_minutes"].sum()
+        if not production_df.empty else 0
+    )
+
+    active_orders = (
+        len(orders_df[orders_df["status"].isin(["pending", "in production"])])
+        if not orders_df.empty else 0
+    )
+
+    open_machines = (
+        len(machines_df[machines_df["status"] != "operational"])
+        if not machines_df.empty else 0
+    )
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric("Actual Production", f"{total_production:,.0f}")
+    col2.metric("Planned Production", f"{planned_production:,.0f}")
+    col3.metric("Active Orders", active_orders)
+    col4.metric("Rejected Units", f"{rejected_units:,.0f}")
+
+    col5, col6 = st.columns(2)
+
+    col5.metric("Downtime", f"{downtime_minutes:,.0f} minutes")
+    col6.metric("Machines Requiring Attention", open_machines)
+
+    st.subheader("Production Performance")
+
+    if not production_df.empty:
+        production_df["efficiency"] = (
+            production_df["actual_quantity"]
+            / production_df["planned_quantity"]
+            * 100
+        ).round(1)
+
+        st.dataframe(
+            production_df[
+                [
+                    "production_date",
+                    "planned_quantity",
+                    "actual_quantity",
+                    "rejected_quantity",
+                    "downtime_minutes",
+                    "efficiency",
+                ]
+            ],
+            use_container_width=True,
+        )
     else:
-        st.info("No departments have been added yet.")
+        st.info("No production records available.")
+
+    st.subheader("Machines Requiring Attention")
+
+    if not machines_df.empty:
+        attention_machines = machines_df[
+            machines_df["status"] != "operational"
+        ]
+
+        if not attention_machines.empty:
+            st.warning("Some machines require attention.")
+            st.dataframe(attention_machines, use_container_width=True)
+        else:
+            st.success("All machines are operational.")
 except Exception as error:
-    st.error(f"Unable to read departments: {error}")
+    st.error(f"Unable to load the manager dashboard: {error}")
