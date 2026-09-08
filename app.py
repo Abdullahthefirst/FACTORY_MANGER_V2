@@ -244,7 +244,40 @@ try:
 
     elif page == "Workforce":
         st.title("Workforce Management")
-        st.dataframe(load_table("employee_attendance"), use_container_width=True)
+
+        employees_df = load_table("employees")
+        attendance_df = load_table("employee_attendance")
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Employees", len(employees_df))
+
+        if not attendance_df.empty:
+            present_count = len(
+                attendance_df[attendance_df["status"].str.lower() == "present"]
+            )
+            absent_count = len(
+                attendance_df[attendance_df["status"].str.lower() == "absent"]
+            )
+        else:
+            present_count = 0
+            absent_count = 0
+
+        col2.metric("Present Today", present_count)
+        col3.metric("Absent Today", absent_count)
+
+        st.subheader("Employees")
+
+        if employees_df.empty:
+            st.info("No employees available.")
+        else:
+            st.dataframe(employees_df, use_container_width=True)
+
+        st.subheader("Attendance")
+
+        if attendance_df.empty:
+            st.info("No attendance records available.")
+        else:
+            st.dataframe(attendance_df, use_container_width=True)
 
     elif page == "Purchasing":
         st.title("Purchasing and Suppliers")
