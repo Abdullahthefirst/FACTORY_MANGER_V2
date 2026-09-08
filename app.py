@@ -177,21 +177,20 @@ def style_status(value: object) -> str:
     return ""
 
 
-def show_manager_table(
+def render_manager_table(
     df: pd.DataFrame,
-    preferred_columns: list[str] | None = None,
+    preferred_columns: list[str],
 ) -> None:
-    """Render a readable, status-aware table for managers."""
+    """Render a manager-first table with status-aware styling."""
     display_df = manager_view(df)
+    display_df = arrange_columns(display_df, preferred_columns)
+    styled_df = display_df.style
 
-    if preferred_columns:
-        display_df = arrange_columns(display_df, preferred_columns)
+    for column in ["status", "priority", "severity"]:
+        if column in display_df.columns:
+            styled_df = styled_df.map(style_status, subset=[column])
 
-    if "status" in display_df.columns:
-        styled_df = display_df.style.map(style_status, subset=["status"])
-        st.dataframe(styled_df, use_container_width=True, hide_index=True)
-    else:
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
+    st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
 
 try:
@@ -252,7 +251,7 @@ try:
                 * 100
             ).round(1)
 
-            show_manager_table(
+            render_manager_table(
                 production_df[
                     [
                         "production_date",
@@ -262,7 +261,14 @@ try:
                         "downtime_minutes",
                         "efficiency",
                     ]
-                ]
+                ],
+                [
+                    "production_date",
+                    "planned_quantity",
+                    "actual_quantity",
+                    "rejected_quantity",
+                    "downtime_minutes",
+                ],
             )
         else:
             st.info("No production records available.")
@@ -276,7 +282,7 @@ try:
 
             if not attention_machines.empty:
                 st.warning("Some machines require attention.")
-                show_manager_table(
+                render_manager_table(
                     attention_machines,
                     [
                         "status",
@@ -300,7 +306,7 @@ try:
                 orders_df["status"].str.lower() == "delayed"
             ]
             st.metric("Delayed Orders", len(delayed_orders))
-            show_manager_table(
+            render_manager_table(
                 orders_df,
                 [
                     "status",
@@ -445,7 +451,7 @@ try:
             )
 
             st.subheader("Production Records")
-            show_manager_table(
+            render_manager_table(
                 filtered_df,
                 [
                     "status",
@@ -462,16 +468,16 @@ try:
     elif page == "📦 Inventory & Supply":
         st.title("Inventory and Supply")
         st.subheader("Inventory")
-        show_manager_table(load_table("inventory"))
+        render_manager_table(load_table("inventory"), [])
 
         st.subheader("Purchase Orders")
-        show_manager_table(load_table("purchase_orders"))
+        render_manager_table(load_table("purchase_orders"), [])
 
     elif page == "⚙️ Machines & Maintenance":
         st.title("Machines and Maintenance")
         st.subheader("Machines")
         machines_df = load_table("machines")
-        show_manager_table(
+        render_manager_table(
             machines_df,
             [
                 "status",
@@ -482,11 +488,11 @@ try:
         )
 
         st.subheader("Maintenance Records")
-        show_manager_table(load_table("maintenance_records"))
+        render_manager_table(load_table("maintenance_records"), [])
 
     elif page == "✅ Quality":
         st.title("Quality Management")
-        show_manager_table(load_table("quality_inspections"))
+        render_manager_table(load_table("quality_inspections"), [])
 
     elif page == "👥 Workforce":
         st.title("Workforce Management")
@@ -516,25 +522,44 @@ try:
         if employees_df.empty:
             st.info("No employees available.")
         else:
-            show_manager_table(employees_df)
+            render_manager_table(employees_df, [])
 
         st.subheader("Attendance")
 
         if attendance_df.empty:
             st.info("No attendance records available.")
         else:
-            show_manager_table(attendance_df)
+            render_manager_table(
+                attendance_df,
+                [
+                    "status",
+                    "attendance_date",
+                    "shift_id",
+                    "overtime_hours",
+                ],
+            )
 
     elif page == "🚚 Logistics":
         st.title("Logistics")
-        show_manager_table(load_table("shipments"))
+        render_manager_table(load_table("shipments"), [])
 
     elif page == "💰 Costs":
         st.title("Costs and Profitability")
-        show_manager_table(load_table("operating_costs"))
+        render_manager_table(load_table("operating_costs"), [])
 
     elif page == "🛡️ Safety & Risk":
         st.title("Safety and Compliance")
-        show_manager_table(load_table("safety_incidents"))
+        safety_df = load_table("safety_incidents")
+        render_manager_table(
+            safety_df,
+            [
+                "severity",
+                "status",
+                "incident_code",
+                "incident_date",
+                "incident_type",
+                "description",
+            ],
+        )
 except Exception as error:
     st.error(f"Unable to load {page.lower()} data: {error}")
