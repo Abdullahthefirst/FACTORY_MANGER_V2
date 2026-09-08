@@ -5,6 +5,12 @@ import pandas as pd
 import streamlit as st
 from supabase import create_client
 
+from src.ai.ui import (
+    init_ai_state,
+    render_ai_page,
+    render_dashboard_ai_suggestions,
+)
+
 
 st.set_page_config(page_title="FactoryOps", layout="wide")
 
@@ -93,6 +99,8 @@ if st.session_state.user is None:
 
     st.stop()
 
+init_ai_state()
+
 st.sidebar.title("FactoryOps")
 st.sidebar.caption("Manager Control Center")
 
@@ -108,6 +116,7 @@ page = st.sidebar.radio(
     "Navigate",
     [
         "📊 Overview",
+        "🤖 AI Center",
         "📦 Orders & Demand",
         "🏭 Production",
         "📦 Inventory & Supply",
@@ -485,6 +494,10 @@ try:
         )
 
         render_manager_table(summary_df, ["Status", "Area", "Count"])
+        render_dashboard_ai_suggestions()
+
+    elif page == "🤖 AI Center":
+        render_ai_page(load_table)
 
     elif page == "📦 Orders & Demand":
         st.title("Orders & Demand")
