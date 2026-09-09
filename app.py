@@ -12,7 +12,6 @@ from src.ai.ui import (
     render_dashboard_ai_suggestions,
 )
 from src.pages.reports import render_reports_page
-from sample_data.seed_database import load_sample_database
 
 
 st.set_page_config(
@@ -219,7 +218,6 @@ page = st.sidebar.radio(
         "📊 Overview",
         "🤖 AI Center",
         "📈 Reports & Alerts",
-        "🧪 Sample Data",
         "📦 Orders & Demand",
         "🏭 Production",
         "📦 Inventory & Supply",
@@ -247,6 +245,14 @@ def numeric_column(df: pd.DataFrame, column: str, default: float = 0) -> pd.Seri
     if column not in df.columns:
         return pd.Series(default, index=df.index, dtype="float64")
     return pd.to_numeric(df[column], errors="coerce").fillna(default)
+
+
+def format_number(value: object, decimals: int = 0) -> str:
+    """Format integers and decimals safely."""
+    try:
+        return f"{float(value):,.{decimals}f}"
+    except (TypeError, ValueError):
+        return "0"
 
 
 def add_lookup_name(
@@ -484,7 +490,7 @@ def render_manager_table(
                 table_df[column] = pd.to_numeric(
                     table_df[column],
                     errors="coerce",
-                ).fillna(0).map(lambda value: f"{value:,.0f}")
+                ).fillna(0).map(format_number)
 
         table_df = table_df.rename(columns=readable_names)
         styled_df = table_df.style
@@ -618,7 +624,7 @@ try:
                     "Open Incidents" if open_safety > 0 else "Clear",
                 ],
                 "Count": [
-                    f"{actual_production:,.0f} units produced",
+                    f"{format_number(actual_production)} units produced",
                     f"{delayed_orders} delayed",
                     f"{low_stock} below reorder level",
                     f"{machine_issues} needing attention",
@@ -637,18 +643,6 @@ try:
     elif page == "📈 Reports & Alerts":
         reviewer_id = getattr(st.session_state.get("user"), "id", None)
         render_reports_page(load_table, render_manager_table, supabase, reviewer_id)
-
-    elif page == "🧪 Sample Data":
-        st.title("Sample Database")
-        st.caption("Populate the connected Supabase project with linked, realistic test records.")
-        st.warning("Use this only for a test project. Existing rows with the sample codes are updated.")
-        if st.button("Load or refresh sample database", type="primary"):
-            try:
-                counts = load_sample_database(supabase)
-                st.success("Sample database loaded successfully.")
-                st.json(counts)
-            except Exception as error:
-                st.error(f"Sample data could not be loaded: {error}")
 
     elif page == "📦 Orders & Demand":
         st.title("Orders & Demand")
@@ -729,7 +723,7 @@ try:
             col1.metric("Total Orders", total_orders)
             col2.metric("Orders at Risk", at_risk_orders)
             col3.metric("Delayed Orders", delayed_orders)
-            col4.metric("Committed Quantity", f"{total_quantity:,.0f}")
+            col4.metric("Committed Quantity", format_number(total_quantity))
 
             st.subheader("Order Risk Monitor")
             render_manager_table(
@@ -804,10 +798,10 @@ try:
             downtime = filtered_df["downtime_minutes"].sum()
 
             col1, col2, col3, col4 = st.columns(4)
-            col1.metric("Planned", f"{planned:,.0f}")
-            col2.metric("Actual", f"{actual:,.0f}")
-            col3.metric("Rejected", f"{rejected:,.0f}")
-            col4.metric("Downtime", f"{downtime:,.0f} min")
+            col1.metric("Planned", format_number(planned))
+            col2.metric("Actual", format_number(actual))
+            col3.metric("Rejected", format_number(rejected))
+            col4.metric("Downtime", f"{format_number(downtime)} min")
 
             chart_data = (
                 filtered_df[
@@ -1192,7 +1186,10 @@ try:
             col1, col2, col3 = st.columns(3)
             col1.metric("Machines", len(machine_view))
             col2.metric("Critical Machines", critical_count)
-            col3.metric("Total Downtime", f"{total_downtime:,.0f} min")
+            col3.metric(
+                "Total Downtime",
+                f"{format_number(total_downtime)} min",
+            )
 
             st.subheader("Machine Status")
             render_manager_table(
@@ -1295,8 +1292,8 @@ try:
             )
 
             col1, col2, col3 = st.columns(3)
-            col1.metric("Inspected Units", f"{total_inspected:,.0f}")
-            col2.metric("Rejected Units", f"{total_rejected:,.0f}")
+            col1.metric("Inspected Units", format_number(total_inspected))
+            col2.metric("Rejected Units", format_number(total_rejected))
             col3.metric("Overall Defect Rate", f"{overall_defect_rate:.2f}%")
 
             st.subheader("Quality Risk Monitor")
@@ -1491,8 +1488,8 @@ try:
             )
 
             col1, col2, col3 = st.columns(3)
-            col1.metric("Total Operating Cost", f"{total_cost:,.0f}")
-            col2.metric("Average Cost Entry", f"{average_cost:,.0f}")
+            col1.metric("Total Operating Cost", format_number(total_cost))
+            col2.metric("Average Cost Entry", format_number(average_cost))
             col3.metric("Highest Cost Category", top_category)
 
             st.subheader("Cost by Category")
