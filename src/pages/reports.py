@@ -18,6 +18,14 @@ def _load(loader: Callable[[str], pd.DataFrame], table: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def _format_number(value: object, decimals: int = 0) -> str:
+    """Format Python, Pandas, and NumPy numbers safely."""
+    try:
+        return f"{float(value):,.{decimals}f}"
+    except (TypeError, ValueError):
+        return "0"
+
+
 def _alerts(loader: Callable[[str], pd.DataFrame]) -> pd.DataFrame:
     rows: list[dict[str, object]] = []
     today = pd.Timestamp(date.today())
@@ -37,7 +45,20 @@ def _alerts(loader: Callable[[str], pd.DataFrame]) -> pd.DataFrame:
         stock["quantity"] = pd.to_numeric(stock["quantity"], errors="coerce").fillna(0)
         stock["reorder_level"] = pd.to_numeric(stock.get("reorder_level", 0), errors="coerce").fillna(0)
         for _, row in stock[stock["quantity"] <= stock["reorder_level"]].iterrows():
-            rows.append({"severity": "Critical" if row["quantity"] <= 0 else "High", "area": "Inventory", "title": f"{row.get('name', row.get('material_code', 'Material'))} below reorder level", "detail": f"Available {row['quantity']:,.0}; reorder at {row['reorder_level']:,.0}"})
+            rows.append(
+                {
+                    "severity": "Critical" if row["quantity"] <= 0 else "High",
+                    "area": "Inventory",
+                    "title": (
+                        f"{row.get('name', row.get('material_code', 'Material'))} "
+                        "below reorder level"
+                    ),
+                    "detail": (
+                        f"Available {_format_number(row['quantity'])}; "
+                        f"reorder at {_format_number(row['reorder_level'])}"
+                    ),
+                }
+            )
 
     machines = _load(loader, "machines")
     if not machines.empty and "status" in machines.columns:
