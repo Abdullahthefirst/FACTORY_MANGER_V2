@@ -24,8 +24,10 @@ st.markdown(
     """
     <style>
         .block-container {
-            padding-top: 2rem;
-            padding-bottom: 3rem;
+            width: 100% !important;
+            max-width: none !important;
+            padding: 2rem 2.5rem 3rem !important;
+            transition: padding 0.25s ease, width 0.25s ease;
         }
 
         /* Works consistently in light and dark mode */
@@ -52,15 +54,9 @@ st.markdown(
             color: inherit !important;
         }
 
-        /* Keep sidebar wide without overriding its theme */
         section[data-testid="stSidebar"] {
-            width: 18rem !important;
-            min-width: 18rem !important;
             border-right: 1px solid rgba(127, 127, 127, 0.20);
-        }
-
-        section[data-testid="stSidebar"] > div:first-child {
-            width: 18rem !important;
+            transition: transform 0.25s ease, width 0.25s ease;
         }
 
         [data-testid="stSidebar"]

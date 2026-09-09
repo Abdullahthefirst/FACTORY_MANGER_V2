@@ -30,20 +30,26 @@ create index if not exists submissions_status_idx on data_entry_submissions(stat
 create index if not exists inventory_material_idx on inventory(material_id);
 
 -- Add readable codes to databases created by the earlier schema version.
-alter table departments add column if not exists department_code text;
-alter table employees add column if not exists employee_code text;
-alter table products add column if not exists product_code text;
-alter table suppliers add column if not exists supplier_code text;
-alter table materials add column if not exists material_code text;
-alter table production_lines add column if not exists line_code text;
-alter table customer_orders add column if not exists order_code text;
-alter table production_records add column if not exists production_code text;
-alter table purchase_orders add column if not exists purchase_order_code text;
-alter table maintenance_records add column if not exists maintenance_code text;
-alter table quality_inspections add column if not exists inspection_code text;
-alter table shipments add column if not exists shipment_code text;
-alter table operating_costs add column if not exists cost_code text;
-alter table safety_incidents add column if not exists incident_code text;
+alter table if exists departments add column if not exists department_code text;
+alter table if exists employees add column if not exists employee_code text;
+alter table if exists products add column if not exists product_code text;
+alter table if exists customers add column if not exists customer_code text;
+alter table if exists suppliers add column if not exists supplier_code text;
+alter table if exists materials add column if not exists material_code text;
+alter table if exists production_lines add column if not exists line_code text;
+alter table if exists machines add column if not exists machine_code text;
+alter table if exists customer_orders add column if not exists order_code text;
+alter table if exists production_plans add column if not exists plan_code text;
+alter table if exists production_records add column if not exists production_code text;
+alter table if exists purchase_orders add column if not exists purchase_order_code text;
+alter table if exists inventory_movements add column if not exists movement_code text;
+alter table if exists maintenance_records add column if not exists maintenance_code text;
+alter table if exists quality_inspections add column if not exists inspection_code text;
+alter table if exists customer_complaints add column if not exists complaint_code text;
+alter table if exists shipments add column if not exists shipment_code text;
+alter table if exists operating_costs add column if not exists cost_code text;
+alter table if exists safety_incidents add column if not exists incident_code text;
+alter table if exists data_entry_submissions add column if not exists submission_code text;
 
 alter table products add column if not exists standard_cost numeric(14,2) not null default 0;
 alter table products add column if not exists selling_price numeric(14,2) not null default 0;
@@ -73,57 +79,102 @@ alter table operating_costs add column if not exists production_line_id uuid ref
 
 -- Human-readable codes for records created after the migration. The UUID remains
 -- the internal primary key; the visible code is stable and short.
-create or replace function factoryops_assign_code() returns trigger
-language plpgsql as $$
+create or replace function public.factoryops_assign_code()
+returns trigger
+language plpgsql
+as $$
+declare
+  code_column text := tg_argv[0];
+  code_prefix text := tg_argv[1];
+  row_data jsonb;
+  generated_code text;
 begin
-  if tg_table_name = 'departments' and new.department_code is null then new.department_code := 'DEP-' || upper(substr(replace(new.id::text, '-', ''), 1, 6)); end if;
-  if tg_table_name = 'employees' and new.employee_code is null then new.employee_code := 'EMP-' || upper(substr(replace(new.id::text, '-', ''), 1, 6)); end if;
-  if tg_table_name = 'products' and new.product_code is null then new.product_code := 'PRD-' || upper(substr(replace(new.id::text, '-', ''), 1, 6)); end if;
-  if tg_table_name = 'suppliers' and new.supplier_code is null then new.supplier_code := 'SUP-' || upper(substr(replace(new.id::text, '-', ''), 1, 6)); end if;
-  if tg_table_name = 'materials' and new.material_code is null then new.material_code := 'MAT-' || upper(substr(replace(new.id::text, '-', ''), 1, 6)); end if;
-  if tg_table_name = 'production_lines' and new.line_code is null then new.line_code := 'LINE-' || upper(substr(replace(new.id::text, '-', ''), 1, 6)); end if;
-  if tg_table_name = 'customer_orders' and new.order_code is null then new.order_code := 'ORD-' || upper(substr(replace(new.id::text, '-', ''), 1, 6)); end if;
-  if tg_table_name = 'production_records' and new.production_code is null then new.production_code := 'PROD-' || upper(substr(replace(new.id::text, '-', ''), 1, 6)); end if;
-  if tg_table_name = 'purchase_orders' and new.purchase_order_code is null then new.purchase_order_code := 'PO-' || upper(substr(replace(new.id::text, '-', ''), 1, 6)); end if;
-  if tg_table_name = 'maintenance_records' and new.maintenance_code is null then new.maintenance_code := 'MNT-' || upper(substr(replace(new.id::text, '-', ''), 1, 6)); end if;
-  if tg_table_name = 'quality_inspections' and new.inspection_code is null then new.inspection_code := 'QIN-' || upper(substr(replace(new.id::text, '-', ''), 1, 6)); end if;
-  if tg_table_name = 'shipments' and new.shipment_code is null then new.shipment_code := 'SHP-' || upper(substr(replace(new.id::text, '-', ''), 1, 6)); end if;
-  if tg_table_name = 'operating_costs' and new.cost_code is null then new.cost_code := 'CST-' || upper(substr(replace(new.id::text, '-', ''), 1, 6)); end if;
-  if tg_table_name = 'safety_incidents' and new.incident_code is null then new.incident_code := 'INC-' || upper(substr(replace(new.id::text, '-', ''), 1, 6)); end if;
-  if tg_table_name = 'inventory_movements' and new.movement_code is null then new.movement_code := 'MOV-' || upper(substr(replace(new.id::text, '-', ''), 1, 6)); end if;
-  if tg_table_name = 'data_entry_submissions' and new.submission_code is null then new.submission_code := 'SUB-' || upper(substr(replace(new.id::text, '-', ''), 1, 6)); end if;
-  return new;
-end $$;
+  row_data := to_jsonb(new);
 
-drop trigger if exists factoryops_codes on departments;
-create trigger factoryops_codes before insert on departments for each row execute function factoryops_assign_code();
-drop trigger if exists factoryops_codes on employees;
-create trigger factoryops_codes before insert on employees for each row execute function factoryops_assign_code();
-drop trigger if exists factoryops_codes on products;
-create trigger factoryops_codes before insert on products for each row execute function factoryops_assign_code();
-drop trigger if exists factoryops_codes on suppliers;
-create trigger factoryops_codes before insert on suppliers for each row execute function factoryops_assign_code();
-drop trigger if exists factoryops_codes on materials;
-create trigger factoryops_codes before insert on materials for each row execute function factoryops_assign_code();
-drop trigger if exists factoryops_codes on production_lines;
-create trigger factoryops_codes before insert on production_lines for each row execute function factoryops_assign_code();
-drop trigger if exists factoryops_codes on customer_orders;
-create trigger factoryops_codes before insert on customer_orders for each row execute function factoryops_assign_code();
-drop trigger if exists factoryops_codes on production_records;
-create trigger factoryops_codes before insert on production_records for each row execute function factoryops_assign_code();
-drop trigger if exists factoryops_codes on purchase_orders;
-create trigger factoryops_codes before insert on purchase_orders for each row execute function factoryops_assign_code();
-drop trigger if exists factoryops_codes on maintenance_records;
-create trigger factoryops_codes before insert on maintenance_records for each row execute function factoryops_assign_code();
-drop trigger if exists factoryops_codes on quality_inspections;
-create trigger factoryops_codes before insert on quality_inspections for each row execute function factoryops_assign_code();
-drop trigger if exists factoryops_codes on shipments;
-create trigger factoryops_codes before insert on shipments for each row execute function factoryops_assign_code();
-drop trigger if exists factoryops_codes on operating_costs;
-create trigger factoryops_codes before insert on operating_costs for each row execute function factoryops_assign_code();
-drop trigger if exists factoryops_codes on safety_incidents;
-create trigger factoryops_codes before insert on safety_incidents for each row execute function factoryops_assign_code();
-drop trigger if exists factoryops_codes on inventory_movements;
-create trigger factoryops_codes before insert on inventory_movements for each row execute function factoryops_assign_code();
-drop trigger if exists factoryops_codes on data_entry_submissions;
-create trigger factoryops_codes before insert on data_entry_submissions for each row execute function factoryops_assign_code();
+  -- Ignore a trigger configured for a column that is absent from this row type.
+  if not (row_data ? code_column) then
+    return new;
+  end if;
+
+  -- Preserve a code supplied by the caller.
+  if nullif(btrim(row_data ->> code_column), '') is not null then
+    return new;
+  end if;
+
+  generated_code :=
+    code_prefix ||
+    upper(substr(replace(new.id::text, '-', ''), 1, 6));
+
+  row_data := jsonb_set(
+    row_data,
+    array[code_column],
+    to_jsonb(generated_code),
+    true
+  );
+
+  new := jsonb_populate_record(new, row_data);
+
+  return new;
+end;
+$$;
+
+do $$
+declare
+  item record;
+begin
+  for item in
+    select *
+    from (
+      values
+        ('departments',            'department_code',       'DEP-'),
+        ('employees',              'employee_code',         'EMP-'),
+        ('products',               'product_code',          'PRD-'),
+        ('customers',              'customer_code',         'CUS-'),
+        ('suppliers',              'supplier_code',         'SUP-'),
+        ('materials',              'material_code',         'MAT-'),
+        ('production_lines',       'line_code',             'LINE-'),
+        ('machines',               'machine_code',          'MCH-'),
+        ('customer_orders',        'order_code',            'ORD-'),
+        ('production_plans',       'plan_code',             'PLAN-'),
+        ('production_records',     'production_code',       'PROD-'),
+        ('purchase_orders',        'purchase_order_code',   'PO-'),
+        ('inventory_movements',    'movement_code',         'MOV-'),
+        ('maintenance_records',    'maintenance_code',      'MNT-'),
+        ('quality_inspections',    'inspection_code',       'QIN-'),
+        ('customer_complaints',    'complaint_code',        'CMP-'),
+        ('shipments',              'shipment_code',         'SHP-'),
+        ('operating_costs',        'cost_code',             'CST-'),
+        ('safety_incidents',       'incident_code',         'INC-'),
+        ('data_entry_submissions', 'submission_code',       'SUB-')
+    ) as code_tables(table_name, column_name, code_prefix)
+  loop
+    if to_regclass('public.' || quote_ident(item.table_name)) is not null then
+      execute format(
+        'drop trigger if exists factoryops_codes on public.%I',
+        item.table_name
+      );
+
+      execute format(
+        'create trigger factoryops_codes
+         before insert on public.%I
+         for each row
+         execute function public.factoryops_assign_code(%L, %L)',
+        item.table_name,
+        item.column_name,
+        item.code_prefix
+      );
+
+      -- Fill codes missing from existing records.
+      execute format(
+        'update public.%I
+         set %I = %L || upper(substr(replace(id::text, ''-'', ''''), 1, 6))
+         where nullif(btrim(%I), '''') is null',
+        item.table_name,
+        item.column_name,
+        item.code_prefix,
+        item.column_name
+      );
+    end if;
+  end loop;
+end;
+$$;

@@ -34,8 +34,10 @@ st.markdown(
     """
     <style>
         .block-container {
-            max-width: 1300px;
-            padding-top: 2rem;
+            width: 100% !important;
+            max-width: none !important;
+            padding: 2rem 2.5rem 3rem !important;
+            transition: padding 0.25s ease, width 0.25s ease;
         }
 
         h1, h2, h3 {
@@ -43,13 +45,8 @@ st.markdown(
         }
 
         section[data-testid="stSidebar"] {
-            width: 18rem !important;
-            min-width: 18rem !important;
             border-right: 1px solid rgba(127, 127, 127, 0.20);
-        }
-
-        section[data-testid="stSidebar"] > div:first-child {
-            width: 18rem !important;
+            transition: transform 0.25s ease, width 0.25s ease;
         }
 
         [data-testid="stSidebar"]
