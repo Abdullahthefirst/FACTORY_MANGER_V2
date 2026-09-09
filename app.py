@@ -4,12 +4,15 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 from supabase import create_client
+from datetime import date
 
 from src.ai.ui import (
     init_ai_state,
     render_ai_page,
     render_dashboard_ai_suggestions,
 )
+from src.pages.reports import render_reports_page
+from sample_data.seed_database import load_sample_database
 
 
 st.set_page_config(page_title="FactoryOps", layout="wide")
@@ -60,8 +63,16 @@ st.markdown(
 # Configure these values in Streamlit Cloud -> App -> Settings -> Secrets.
 # Use only the publishable Supabase key; never use a database password or
 # service-role key in Streamlit Cloud.
-SUPABASE_URL = st.secrets["SUPABASE_URL"]
-SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+try:
+    SUPABASE_URL = st.secrets.get("SUPABASE_URL")
+    SUPABASE_KEY = st.secrets.get("SUPABASE_KEY")
+except Exception:
+    SUPABASE_URL = None
+    SUPABASE_KEY = None
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    st.error("Add SUPABASE_URL and SUPABASE_KEY under Streamlit Cloud App Settings → Secrets.")
+    st.stop()
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -106,9 +117,7 @@ st.sidebar.caption("Manager Control Center")
 
 if st.sidebar.button("Log out"):
     supabase.auth.sign_out()
-    st.session_state.user = None
-    st.session_state.pop("access_token", None)
-    st.session_state.pop("refresh_token", None)
+    st.session_state.clear()
     st.rerun()
 
 
@@ -117,6 +126,8 @@ page = st.sidebar.radio(
     [
         "📊 Overview",
         "🤖 AI Center",
+        "📈 Reports & Alerts",
+        "🧪 Sample Data",
         "📦 Orders & Demand",
         "🏭 Production",
         "📦 Inventory & Supply",
@@ -132,8 +143,18 @@ page = st.sidebar.radio(
 
 def load_table(table_name: str) -> pd.DataFrame:
     """Load a Supabase table into a DataFrame for the selected module."""
-    response = supabase.table(table_name).select("*").execute()
-    return pd.DataFrame(response.data)
+    try:
+        response = supabase.table(table_name).select("*").execute()
+        return pd.DataFrame(response.data or [])
+    except Exception:
+        return pd.DataFrame()
+
+
+def numeric_column(df: pd.DataFrame, column: str, default: float = 0) -> pd.Series:
+    """Return a numeric Series even when an optional column is absent."""
+    if column not in df.columns:
+        return pd.Series(default, index=df.index, dtype="float64")
+    return pd.to_numeric(df[column], errors="coerce").fillna(default)
 
 
 def add_lookup_name(
@@ -266,7 +287,22 @@ def render_manager_table(
     readable_names = {
         "status": "Status",
         "priority": "Priority",
+        "risk": "Delivery Risk",
+        "capacity_status": "Capacity Status",
         "severity": "Severity",
+        "area": "Area",
+        "title": "Alert",
+        "detail": "Details",
+        "order_code": "Order Code",
+        "plan_code": "Plan Code",
+        "supplier_health": "Supplier Health",
+        "reliability_score": "Reliability",
+        "quality_score": "Quality Score",
+        "average_lead_days": "Avg. Lead Days",
+        "capacity_per_shift": "Capacity / Shift",
+        "capacity_gap": "Capacity Gap",
+        "days_remaining": "Days Remaining",
+        "efficiency_percent": "Efficiency",
         "production_code": "Production Code",
         "production_date": "Production Date",
         "production_line_name": "Production Line",
@@ -319,6 +355,9 @@ def render_manager_table(
         "cost_date",
         "incident_date",
         "attendance_date",
+        "plan_date",
+        "reported_at",
+        "resolved_at",
     ]
     integer_columns = [
         "quantity",
@@ -333,6 +372,9 @@ def render_manager_table(
         "received_quantity",
         "open_issues",
         "maintenance_events",
+        "capacity_per_shift",
+        "capacity_gap",
+        "days_remaining",
     ]
 
     def format_for_display(table_df: pd.DataFrame):
@@ -494,10 +536,27 @@ try:
         )
 
         render_manager_table(summary_df, ["Status", "Area", "Count"])
+
         render_dashboard_ai_suggestions()
 
     elif page == "🤖 AI Center":
         render_ai_page(load_table)
+
+    elif page == "📈 Reports & Alerts":
+        reviewer_id = getattr(st.session_state.get("user"), "id", None)
+        render_reports_page(load_table, render_manager_table, supabase, reviewer_id)
+
+    elif page == "🧪 Sample Data":
+        st.title("Sample Database")
+        st.caption("Populate the connected Supabase project with linked, realistic test records.")
+        st.warning("Use this only for a test project. Existing rows with the sample codes are updated.")
+        if st.button("Load or refresh sample database", type="primary"):
+            try:
+                counts = load_sample_database(supabase)
+                st.success("Sample database loaded successfully.")
+                st.json(counts)
+            except Exception as error:
+                st.error(f"Sample data could not be loaded: {error}")
 
     elif page == "📦 Orders & Demand":
         st.title("Orders & Demand")
@@ -749,6 +808,26 @@ try:
                 use_container_width=True,
             )
 
+            st.subheader("Production Planning and Capacity")
+            plans_df = load_table("production_plans")
+            if plans_df.empty:
+                st.info("No production plans available. Add plans through the data-entry or planning workflow.")
+            else:
+                plans_df = add_lookup_name(plans_df, lines_df, "production_line_id", "production_line_name")
+                plans_df = add_lookup_name(plans_df, products_df, "product_id", "product_name")
+                plans_df["plan_date"] = pd.to_datetime(plans_df.get("plan_date"), errors="coerce")
+                plans_df["planned_quantity"] = numeric_column(plans_df, "planned_quantity")
+                line_capacity = lines_df[[c for c in ["id", "capacity_per_shift"] if c in lines_df.columns]].copy()
+                if "capacity_per_shift" in line_capacity.columns:
+                    line_capacity["capacity_per_shift"] = numeric_column(line_capacity, "capacity_per_shift")
+                    plans_df = plans_df.merge(line_capacity, left_on="production_line_id", right_on="id", how="left")
+                    plans_df["capacity_gap"] = plans_df["capacity_per_shift"].fillna(0) - plans_df["planned_quantity"]
+                    plans_df["capacity_status"] = plans_df["capacity_gap"].apply(lambda value: "Over Capacity" if value < 0 else "Within Capacity")
+                render_manager_table(
+                    plans_df.sort_values(["plan_date", "capacity_status"] if "capacity_status" in plans_df.columns else ["plan_date"]),
+                    ["capacity_status", "status", "plan_code", "plan_date", "production_line_name", "product_name", "planned_quantity", "capacity_per_shift", "capacity_gap"],
+                )
+
             st.subheader("Production Records")
             render_manager_table(
                 filtered_df,
@@ -904,6 +983,23 @@ try:
                     "received_quantity",
                     "expected_date",
                 ],
+            )
+
+        st.subheader("Supplier Scorecard")
+        if suppliers_df.empty:
+            st.info("No supplier records available.")
+        else:
+            supplier_scorecard = suppliers_df.copy()
+            supplier_scorecard["reliability_score"] = numeric_column(supplier_scorecard, "reliability_score")
+            supplier_scorecard["quality_score"] = numeric_column(supplier_scorecard, "quality_score")
+            supplier_scorecard["average_lead_days"] = numeric_column(supplier_scorecard, "average_lead_days")
+            supplier_scorecard["supplier_health"] = supplier_scorecard.apply(
+                lambda row: "Healthy" if row["reliability_score"] >= 85 and row["quality_score"] >= 85 else "Attention",
+                axis=1,
+            )
+            render_manager_table(
+                supplier_scorecard,
+                ["supplier_health", "supplier_code", "name", "reliability_score", "quality_score", "average_lead_days"],
             )
 
     elif page == "⚙️ Machines & Maintenance":
@@ -1162,6 +1258,33 @@ try:
                     ],
                 )
             else:
+                attendance_df["attendance_date"] = pd.to_datetime(
+                    attendance_df["attendance_date"], errors="coerce"
+                )
+                selected_attendance_date = st.date_input(
+                    "Attendance date",
+                    value=date.today(),
+                    key="manager_attendance_date",
+                )
+                day_attendance = attendance_df[
+                    attendance_df["attendance_date"].dt.date == selected_attendance_date
+                ].copy()
+                if day_attendance.empty:
+                    st.warning(
+                        f"No attendance has been entered for {selected_attendance_date.isoformat()}."
+                    )
+                    render_manager_table(
+                        employees_df,
+                        [
+                            "active",
+                            "employee_code",
+                            "full_name",
+                            "role",
+                            "skill_level",
+                        ],
+                    )
+                    st.stop()
+                attendance_df = day_attendance
                 attendance_view = attendance_df.merge(
                     employees_df[
                         [
