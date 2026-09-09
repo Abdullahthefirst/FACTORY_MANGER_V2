@@ -15,7 +15,11 @@ from src.pages.reports import render_reports_page
 from sample_data.seed_database import load_sample_database
 
 
-st.set_page_config(page_title="FactoryOps", layout="wide")
+st.set_page_config(
+    page_title="FactoryOps",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
 st.markdown(
     """
@@ -45,15 +49,103 @@ st.markdown(
         }
 
         h1, h2, h3 {
-            color: #17324d;
+            color: var(--text-color, #17324d) !important;
         }
 
-        [data-testid="stSidebar"] {
-            background-color: #f8fafc;
+        section[data-testid="stSidebar"] {
+            width: 18rem !important;
+            min-width: 18rem !important;
+            background-color: var(
+                --secondary-background-color,
+                #f8fafc
+            ) !important;
+            border-right: 1px solid var(
+                --border-color,
+                #d7dee8
+            ) !important;
         }
 
-        [data-testid="stSidebar"] h1 {
-            color: #17324d;
+        section[data-testid="stSidebar"] > div:first-child {
+            width: 18rem !important;
+        }
+
+        [data-testid="stSidebar"] h1,
+        [data-testid="stSidebar"] h2,
+        [data-testid="stSidebar"] h3,
+        [data-testid="stSidebar"] p,
+        [data-testid="stSidebar"] label,
+        [data-testid="stSidebar"] span {
+            color: var(--text-color, #17324d) !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+        }
+
+        [data-testid="stSidebar"] [data-testid="stRadio"] {
+            width: 100% !important;
+        }
+
+        [data-testid="stSidebar"]
+        [data-testid="stRadio"]
+        [role="radiogroup"] {
+            width: 100% !important;
+            gap: 0.15rem !important;
+        }
+
+        [data-testid="stSidebar"]
+        [data-testid="stRadio"]
+        [role="radiogroup"] > label {
+            display: flex !important;
+            align-items: center !important;
+            width: 100% !important;
+            min-height: 2.6rem !important;
+            padding: 0.45rem 0.7rem !important;
+            margin: 0.1rem 0 !important;
+            border-radius: 0.55rem !important;
+            color: var(--text-color, #17324d) !important;
+            background: transparent !important;
+            overflow: visible !important;
+        }
+
+        [data-testid="stSidebar"]
+        [data-testid="stRadio"]
+        [role="radiogroup"] > label:hover {
+            background: var(
+                --secondary-background-color,
+                #eef2f7
+            ) !important;
+        }
+
+        [data-testid="stSidebar"]
+        [data-testid="stRadio"]
+        [role="radiogroup"] > label:has(input:checked) {
+            background: color-mix(
+                in srgb,
+                var(--primary-color, #2563eb) 18%,
+                transparent
+            ) !important;
+            box-shadow: inset 3px 0 0 var(
+                --primary-color,
+                #2563eb
+            ) !important;
+        }
+
+        [data-testid="stSidebar"]
+        [data-testid="stRadio"]
+        label p,
+        [data-testid="stSidebar"]
+        [data-testid="stRadio"]
+        label span,
+        [data-testid="stSidebar"]
+        [data-testid="stRadio"]
+        label div {
+            color: var(--text-color, #17324d) !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+            white-space: normal !important;
+        }
+
+        [data-testid="stSidebar"] button {
+            color: var(--text-color, #17324d) !important;
         }
     </style>
     """,
