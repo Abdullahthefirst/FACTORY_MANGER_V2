@@ -6,6 +6,7 @@ import streamlit as st
 from supabase import create_client
 from datetime import date
 
+from src.access_control import get_allowed_pages
 from src.ai.ui import (
     init_ai_state,
     render_ai_page,
@@ -198,23 +199,32 @@ if st.sidebar.button("Log out"):
     st.rerun()
 
 
+user_profile = st.session_state.get("user_profile", {})
+user_role = user_profile.get("role")
+
+allowed_pages = get_allowed_pages(user_role)
+
+if not allowed_pages:
+    st.error(
+        "Your account has no valid FactoryOps role. "
+        "Ask an administrator to assign one."
+    )
+    st.stop()
+
+st.sidebar.markdown("---")
+st.sidebar.caption(
+    f"Role: {user_role.replace('_', ' ').title()}"
+)
+
 page = st.sidebar.radio(
     "Navigate",
-    [
-        "📊 Overview",
-        "🤖 AI Center",
-        "📈 Reports & Alerts",
-        "📦 Orders & Demand",
-        "🏭 Production",
-        "📦 Inventory & Supply",
-        "⚙️ Machines & Maintenance",
-        "✅ Quality",
-        "👥 Workforce",
-        "🚚 Logistics",
-        "💰 Costs",
-        "🛡️ Safety & Risk",
-    ],
+    allowed_pages,
+    key="manager_navigation",
 )
+
+if page not in allowed_pages:
+    st.error("You are not authorized to open this page.")
+    st.stop()
 
 
 def load_table(table_name: str) -> pd.DataFrame:
