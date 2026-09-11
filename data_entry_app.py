@@ -13,6 +13,7 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+from src.auth import get_user_id, load_user_profile, role_label
 from src.database.inserts import create_submission, insert_record, write_audit
 from src.database.queries import fetch_table, recent_rows
 from src.supabase_client import create_supabase_from_secrets
@@ -133,10 +134,30 @@ if st.session_state.entry_user is None:
             response = supabase.auth.sign_in_with_password(
                 {"email": email, "password": password}
             )
+
+            user_id = get_user_id(response.user)
+
+            if not user_id:
+                raise PermissionError("Supabase did not return a user ID.")
+
+            profile = load_user_profile(supabase, user_id)
+
             st.session_state.entry_user = response.user
+            st.session_state.entry_profile = profile
             st.session_state.entry_access_token = response.session.access_token
             st.session_state.entry_refresh_token = response.session.refresh_token
+
             st.rerun()
+
+        except PermissionError as error:
+            try:
+                supabase.auth.sign_out()
+            except Exception:
+                pass
+
+            st.session_state.clear()
+            st.error(str(error))
+
         except Exception as error:
             st.error(f"Login failed: {error}")
     st.stop()
@@ -144,6 +165,13 @@ if st.session_state.entry_user is None:
 
 actor_id = getattr(st.session_state.entry_user, "id", None)
 actor_email = getattr(st.session_state.entry_user, "email", "")
+
+entry_profile = st.session_state.get("entry_profile", {})
+
+st.sidebar.caption(
+    f"{entry_profile.get('display_name', 'User')} · "
+    f"{role_label(entry_profile.get('role'))}"
+)
 
 
 def label_column(frame: pd.DataFrame) -> str:

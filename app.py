@@ -11,6 +11,7 @@ from src.ai.ui import (
     render_ai_page,
     render_dashboard_ai_suggestions,
 )
+from src.auth import get_user_id, load_user_profile, role_label
 from src.pages.reports import render_reports_page
 
 
@@ -149,17 +150,44 @@ if st.session_state.user is None:
             response = supabase.auth.sign_in_with_password(
                 {"email": email, "password": password}
             )
+
+            user_id = get_user_id(response.user)
+
+            if not user_id:
+                raise PermissionError("Supabase did not return a user ID.")
+
+            profile = load_user_profile(supabase, user_id)
+
             st.session_state.user = response.user
+            st.session_state.user_profile = profile
             st.session_state.access_token = response.session.access_token
             st.session_state.refresh_token = response.session.refresh_token
+
             st.success("Login successful.")
             st.rerun()
+
+        except PermissionError as error:
+            try:
+                supabase.auth.sign_out()
+            except Exception:
+                pass
+
+            st.session_state.clear()
+            st.error(str(error))
+
         except Exception as error:
             st.error(f"Login failed: {error}")
 
     st.stop()
 
 init_ai_state()
+
+user_profile = st.session_state.get("user_profile", {})
+
+st.sidebar.caption(
+    f"{user_profile.get('display_name', 'User')} · "
+    f"{role_label(user_profile.get('role'))}"
+)
 
 st.sidebar.title("FactoryOps")
 st.sidebar.caption("Manager Control Center")
