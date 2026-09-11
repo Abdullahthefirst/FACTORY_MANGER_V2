@@ -6,7 +6,7 @@ import streamlit as st
 from supabase import create_client
 from datetime import date
 
-from src.access_control import get_allowed_pages
+from src.access_control import default_page, get_allowed_pages
 from src.ai.ui import (
     init_ai_state,
     render_ai_page,
